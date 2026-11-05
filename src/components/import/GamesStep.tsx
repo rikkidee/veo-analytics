@@ -124,17 +124,26 @@ export default function GamesStep({
         <button
           type="button"
           className="text-sm font-medium text-emerald-700 hover:underline disabled:opacity-50 dark:text-emerald-400"
-          disabled={loading || importing}
+          disabled={importing}
           onClick={onReload}
         >
-          Read the list again
+          Refresh
         </button>
       </div>
 
       {loading && (
-        <p role="status" className="text-sm text-neutral-600 dark:text-neutral-400">
-          Reading your recordings from Veo. A small Veo window will open and close by itself.
-        </p>
+        <div role="status" className="flex items-start gap-3 text-sm">
+          <span
+            aria-hidden="true"
+            className="mt-0.5 size-4 shrink-0 animate-spin rounded-full border-2 border-neutral-300 border-t-emerald-700 motion-reduce:animate-none dark:border-neutral-700 dark:border-t-emerald-400"
+          />
+          <span>
+            <span className="block font-medium">Discovering your games from Veo…</span>
+            <span className="block text-neutral-600 dark:text-neutral-400">
+              This can take up to a minute. A small Veo window will open and close by itself.
+            </span>
+          </span>
+        </div>
       )}
       {loadError && (
         <p role="alert" className="text-sm text-red-700 dark:text-red-400">

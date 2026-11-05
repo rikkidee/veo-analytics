@@ -92,11 +92,18 @@ export default function ImportWizard({ teams, roster, importedGames }: ImportWiz
     .filter(([slug, result]) => result.ok && !state.outcomes[slug])
     .map(([slug]) => slug);
 
+  // Refresh stays clickable during a read, so reads can overlap. Only the newest
+  // one counts; an older one finishing later mustn't replace its list.
+  const latestLoad = useRef(0);
+
   async function loadGames(team: VeoTeam) {
+    latestLoad.current += 1;
+    const thisLoad = latestLoad.current;
     setGamesLoading(true);
     setGamesError(null);
     try {
       const response = await discoverGames(team);
+      if (thisLoad !== latestLoad.current) return;
       if (!response.ok) {
         setGamesError(response.error);
         return;
@@ -114,15 +121,15 @@ export default function ImportWizard({ teams, roster, importedGames }: ImportWiz
         );
       }
     } catch (cause) {
-      setGamesError((cause as Error).message);
+      if (thisLoad === latestLoad.current) setGamesError((cause as Error).message);
     } finally {
-      setGamesLoading(false);
+      if (thisLoad === latestLoad.current) setGamesLoading(false);
     }
   }
 
   // Reads the list whenever the games step shows without one, including after a
   // refresh restores the wizard to this step. Only once per visit to the step: a
-  // failed or empty read shows its message and waits for "Read the list again",
+  // failed or empty read shows its message and waits for Refresh,
   // rather than reopening the Veo window in a loop.
   const autoLoadTried = useRef(false);
   const autoLoadGames = useEffectEvent((team: VeoTeam) => void loadGames(team));
