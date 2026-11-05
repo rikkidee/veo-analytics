@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Veo Analytics Scraper</title>
+    <title>Veo Analytics Importer</title>
     <style>
       body {
         width: 280px;
@@ -42,23 +42,13 @@
       #status.error {
         color: #b91c1c;
       }
-      #warnings {
-        margin: 8px 0 0;
-        padding-left: 18px;
-        color: #92400e;
-        font-size: 12px;
-      }
     </style>
   </head>
   <body>
     <h1>Veo Analytics</h1>
-    <button id="scrape" class="primary">Scrape This Game</button>
+    <button id="open" class="primary">Open Import Wizard</button>
+    <button id="copy">Copy This Report as JSON</button>
     <p id="status" role="status"></p>
-    <ul id="warnings" hidden></ul>
-    <div id="actions" hidden>
-      <button id="send">Send to Veo Analytics</button>
-      <button id="copy">Copy JSON</button>
-    </div>
     <script src="popup.js"></script>
   </body>
 </html>

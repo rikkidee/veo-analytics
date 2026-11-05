@@ -39,7 +39,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
               Roster
             </Link>
             <Link href="/onboarding/games" className="hover:underline">
-              Import Game
+              Import Games
             </Link>
             <div className="ml-auto min-w-0">
               <Suspense fallback={null}>

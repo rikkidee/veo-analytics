@@ -1,11 +1,16 @@
 {
   "manifest_version": 3,
-  "name": "Veo Analytics Scraper",
-  "version": "0.1.0",
-  "description": "Scrapes team and player stats from a Veo match report for Veo Analytics.",
-  "permissions": ["activeTab", "scripting"],
+  "name": "Veo Analytics Importer",
+  "version": "0.2.0",
+  "description": "Imports team and player stats from your Veo match reports into Veo Analytics.",
+  "permissions": ["scripting"],
+  "host_permissions": [
+    "https://app.veo.co/*",
+    "http://localhost:3000/*",
+    "https://veo-analytics.vercel.app/*"
+  ],
   "action": {
-    "default_title": "Veo Analytics Scraper",
+    "default_title": "Veo Analytics Importer",
     "default_popup": "popup.html"
   },
   "background": {
@@ -13,9 +18,14 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://app.veo.co/matches/*/report*"],
+      "matches": ["https://app.veo.co/*"],
       "js": ["content.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["http://localhost:3000/*", "https://veo-analytics.vercel.app/*"],
+      "js": ["bridge.js"],
+      "run_at": "document_start"
     }
   ]
 }

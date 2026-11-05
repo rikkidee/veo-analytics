@@ -17,7 +17,6 @@ A multi-team soccer stats dashboard built from Veo match reports.
 
 1. Go to `chrome://extensions` and turn on Developer mode.
 2. Click **Load unpacked** and choose the `chrome-extension/` folder.
-3. Open a report at `app.veo.co/matches/<match>/report`, click the extension, then **Scrape This Game**.
-4. Click **Send to Veo Analytics** to open the import page, or **Copy JSON** to paste it there.
+3. In the app, open **Import Games** at `/onboarding/games` and follow the wizard.
 
-The extension sends data to `http://localhost:3000`. Change `APP_URL` in `chrome-extension/background.js` after deploying.
+The wizard works from `http://localhost:3000` and `https://veo-analytics.vercel.app`. To allow another address, add it to `APP_URLS` in `chrome-extension/background.js` and to both address lists in `chrome-extension/manifest.json`.
