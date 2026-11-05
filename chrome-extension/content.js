@@ -4,8 +4,8 @@
 // background worker and popup also inject this file when needed. Each injection
 // replaces the previous one, so there is only ever one listener.
 //
-// Selectors for match reports (article[aria-label], columnheader cells, the Edit
-// Columns panel) follow the report page. Selectors for team lists, recordings and
+// Selectors for match reports (article[aria-label], the player table's thead and
+// tbody, the Player Stats tab, the Edit Columns panel) follow the report page. Selectors for team lists, recordings and
 // key events are based on link shapes and visible text; if Veo's markup differs,
 // these are the functions to adjust: discoverTeams, discoverGames, extractKeyEvents.
 (() => {
@@ -31,6 +31,7 @@
     'button, [role="button"], label, [role="checkbox"], [role="option"], [role="menuitemcheckbox"], [role="switch"]';
   const REPORT_READY_TIMEOUT_MS = 30_000;
   const GAME_LINKS_TIMEOUT_MS = 15_000;
+  const PLAYER_TABLE_TIMEOUT_MS = 10_000;
   const MAX_SCROLL_ROUNDS = 40;
 
   const normalize = (value) => value.replace(/\s+/g, " ").trim().toLowerCase();
@@ -275,15 +276,31 @@
     return null;
   }
 
+  // Direct cells only: the first column of each row holds a stats popup, and
+  // anything nested inside it must not count as a column.
+  function headerCells(table) {
+    const rows = table.tHead?.rows;
+    return rows?.length ? [...rows[rows.length - 1].cells] : [];
+  }
+
   function findStatsTable() {
-    const header = document.querySelector('table [role="columnheader"], [role="columnheader"]');
-    return header?.closest('table, [role="table"], [role="grid"]') ?? null;
+    return (
+      [...document.querySelectorAll("table")].find((table) =>
+        headerCells(table).some((cell) => /^player\b/.test(normalize(textOf(cell)))),
+      ) ?? null
+    );
   }
 
   function readHeaders() {
     const table = findStatsTable();
-    if (!table) return [];
-    return [...table.querySelectorAll('[role="columnheader"]')].map(textOf);
+    return table ? headerCells(table).map(textOf) : [];
+  }
+
+  async function openPlayerStats() {
+    if (findStatsTable()) return;
+    const tab = findButton(/^player stats\b/i);
+    if (tab) press(tab);
+    await waitFor(findStatsTable, PLAYER_TABLE_TIMEOUT_MS);
   }
 
   // A column's button starts with its name and may carry extra text after it.
@@ -296,7 +313,7 @@
       (name) => name !== wanted && name.startsWith(wanted),
     );
     const candidates = [...scope.querySelectorAll(OPTION_SELECTOR)].filter((element) => {
-      if (element.closest('table, [role="columnheader"]')) return false;
+      if (element.closest("table")) return false;
       const text = normalize(element.textContent);
       return (
         text.startsWith(wanted) &&
@@ -332,6 +349,10 @@
   async function ensureColumns(warnings) {
     const count = readColumnCount();
     if (count === TARGET_COUNT) return count;
+
+    // Without headers every column looks missing, and clicking them could turn
+    // visible ones off.
+    if (!findStatsTable()) return count;
 
     const editButton = findEditColumnsButton();
     if (!editButton) {
@@ -425,18 +446,18 @@
     const table = findStatsTable();
     if (!table) return { headers: [], rows: [] };
 
-    const headers = [...table.querySelectorAll('[role="columnheader"]')].map(textOf);
+    const headers = readHeaders();
     const rows = [];
     let mismatched = 0;
 
-    for (const row of table.querySelectorAll("tr")) {
-      const tds = [...row.querySelectorAll("td")];
-      if (tds.length === 0) continue;
-      if (tds.length !== headers.length) mismatched += 1;
+    for (const row of [...table.tBodies].flatMap((body) => [...body.rows])) {
+      const rowCells = [...row.cells];
+      if (rowCells.length === 0) continue;
+      if (rowCells.length !== headers.length) mismatched += 1;
 
       const cells = {};
-      tds.forEach((td, index) => {
-        cells[headers[index] ?? `column_${index + 1}`] = parseValue(textOf(td));
+      rowCells.forEach((cell, index) => {
+        cells[headers[index] ?? `column_${index + 1}`] = parseValue(textOf(cell));
       });
       rows.push({ jersey: findJersey(cells), cells });
     }
@@ -512,7 +533,10 @@
     }
 
     const ready = await waitFor(
-      () => findStatsTable() || document.querySelector("article[aria-label]"),
+      () =>
+        findStatsTable() ||
+        document.querySelector("article[aria-label]") ||
+        findButton(/^player stats\b/i),
       REPORT_READY_TIMEOUT_MS,
     );
     if (!ready) {
@@ -521,17 +545,21 @@
         error: "No match report loaded. Match Reports may not be enabled for this game.",
       };
     }
-    // Team stats and the player table load separately; wait briefly for the other.
-    await waitFor(
-      () => findStatsTable() && document.querySelector("article[aria-label]"),
-      10_000,
-    );
+    // Team stats load separately from the rest of the page.
+    await waitFor(() => document.querySelector("article[aria-label]"), 10_000);
 
     const warnings = [];
+    // Opening the Player Stats tab may remove what the current tab shows, so read
+    // that first. Anything not found yet gets a second look afterwards.
+    let teamStats = extractTeamStats();
+    let keyEvents = findKeyEventsContainer() ? extractKeyEvents(warnings) : null;
+
+    await openPlayerStats();
     const columnCount = await ensureColumns(warnings);
-    const teamStats = extractTeamStats();
     const players = extractPlayerStats(warnings);
-    const keyEvents = extractKeyEvents(warnings);
+
+    if (Object.keys(teamStats).length === 0) teamStats = extractTeamStats();
+    keyEvents ??= extractKeyEvents(warnings);
 
     if (players.rows.length === 0 && Object.keys(teamStats).length === 0) {
       return {
