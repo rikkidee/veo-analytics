@@ -8,6 +8,8 @@ import {
   attributeEvents,
   creditsForMatchedEvents,
   detectedJerseys,
+  matchVideoUrl,
+  minutesByJersey,
   NOISE,
   suggestPlayer,
   type RosterPlayer,
@@ -66,26 +68,31 @@ export default function MappingStep({
     ...jerseys.filter((jersey) => suggestPlayer(jersey, roster)),
   ];
   const veoNames = new Map(payload.players.rows.map((row) => [row.jersey, row.name]));
+  const jerseyMinutes = minutesByJersey(payload);
   const undecided = jerseys.filter((jersey) => !choices[jersey]);
   const { matched: matchedEvents, unassigned: events } = attributeEvents(payload, choices, roster);
 
   function renderJerseyRow(jersey: number) {
     const id = `jersey-${jersey}`;
+    const minutes = jerseyMinutes.get(jersey);
     return (
-      <li key={jersey} className="flex items-center gap-3">
-        <label htmlFor={id} className="w-40 shrink-0 truncate text-sm">
+      <li key={jersey} className="flex flex-wrap items-center gap-x-3 gap-y-1 sm:flex-nowrap">
+        <label htmlFor={id} className="min-w-0 flex-1 truncate text-sm sm:w-40 sm:flex-none">
           <span className="font-mono">#{jersey}</span>
           {veoNames.get(jersey) && (
             <span className="text-neutral-600 dark:text-neutral-400"> {veoNames.get(jersey)}</span>
           )}
         </label>
+        <span className="w-14 shrink-0 text-right text-sm tabular-nums text-neutral-600 dark:text-neutral-400">
+          {minutes !== undefined && `${Math.round(minutes)} min`}
+        </span>
         <select
           id={id}
           value={choices[jersey]}
           onChange={(event) =>
             setOverrides((current) => ({ ...current, [jersey]: event.target.value }))
           }
-          className={selectClass}
+          className={`${selectClass} basis-full sm:basis-0`}
         >
           <option value="">Choose…</option>
           <PlayerOptions roster={roster} />
@@ -180,10 +187,31 @@ export default function MappingStep({
 
       <section className="flex flex-col gap-3">
         <h3 className="font-semibold">Jerseys Veo detected</h3>
-        <p className="text-sm text-neutral-600 dark:text-neutral-400">
-          Veo can read one player as several jerseys. Assign them all to that player and their
-          stats combine for this game.
-        </p>
+        <div className="flex flex-col gap-2 text-sm">
+          <p className="text-neutral-600 dark:text-neutral-400">
+            Veo often misreads jersey numbers, so unmatched jerseys are likely your own players
+            under the wrong number. Assign every jersey that belongs to a player and their stats
+            combine for this game.
+          </p>
+          <details className="text-neutral-600 dark:text-neutral-400">
+            <summary className="w-fit cursor-pointer font-medium">Learn more</summary>
+            <p className="mt-2">
+              Veo identifies players by reading jersey numbers from the video using OCR. Hair
+              covering jerseys, camera angles, similar-looking digits (like 7 and 1) and players
+              turning away from the camera can all cause errors. To figure out who a jersey is,
+              look for that number in the match video, then assign it to the correct player. Its
+              minutes can help too: 40 minutes suggests a starter, 5 minutes maybe a sub.
+            </p>
+          </details>
+          <a
+            href={matchVideoUrl(payload.slug)}
+            target="_blank"
+            rel="noreferrer"
+            className="w-fit font-medium text-emerald-700 hover:underline dark:text-emerald-400"
+          >
+            Watch the match video to identify players →
+          </a>
+        </div>
         <ul className="flex flex-col gap-2">{orderedJerseys.map(renderJerseyRow)}</ul>
       </section>
 

@@ -1,4 +1,4 @@
-import { combineStats, EVENT_COLUMNS, type StatLine } from "@/lib/stats";
+import { combineStats, EVENT_COLUMNS, isMinutesColumn, toMinutes, type StatLine } from "@/lib/stats";
 
 export type VeoPlayerRow = {
   jersey: number | null;
@@ -60,6 +60,23 @@ export type JerseyChoice = string;
 
 export function reportUrl(slug: string) {
   return `https://app.veo.co/matches/${slug}/report`;
+}
+
+export function matchVideoUrl(slug: string) {
+  return `https://app.veo.co/matches/${slug}/`;
+}
+
+/** Minutes each jersey played. A jersey with no readable minutes is left out. */
+export function minutesByJersey(payload: VeoPayload) {
+  const minutes = new Map<number, number>();
+  for (const { jersey, cells } of payload.players.rows) {
+    const column = Object.keys(cells).find(isMinutesColumn);
+    const value = column === undefined ? null : toMinutes(cells[column]);
+    if (jersey !== null && value !== null) {
+      minutes.set(jersey, (minutes.get(jersey) ?? 0) + value);
+    }
+  }
+  return minutes;
 }
 
 export function detectedJerseys(payload: VeoPayload): number[] {
