@@ -139,7 +139,7 @@ export default function MappingStep({
           confirm it.
         </p>
         <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
-          This is a one-time setup for each game. It takes about 3–5 minutes, and once it&apos;s
+          This is a one-time setup for each game. It takes about 2–3 minutes, and once it&apos;s
           done it&apos;s saved, so you won&apos;t need to map this game again.
         </p>
       </div>
