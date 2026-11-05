@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "extension:assets": "node scripts/generate-store-assets.mjs",
+    "extension:package": "node scripts/package-extension.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
