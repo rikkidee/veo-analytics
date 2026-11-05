@@ -432,14 +432,15 @@
     return stats;
   }
 
-  function findJersey(cells) {
-    const key = Object.keys(cells).find((header) =>
-      /^(jersey|shirt|number$|#$|no\.?$|player)/i.test(header.trim()),
-    );
-    const source = key === undefined ? null : cells[key];
-    if (typeof source === "number") return Number.isInteger(source) ? source : null;
-    const match = typeof source === "string" ? source.match(/\d{1,3}/) : null;
-    return match ? Number(match[0]) : null;
+  // The player cell starts <span>Deanna Motley</span><span>#12</span>, followed by
+  // a stats popup full of other text and numbers, so only those two spans are read.
+  // The # is required: without it, the second span may belong to the popup.
+  function readPlayerCell(cell) {
+    const [name, jersey] = [...cell.querySelectorAll("span")]
+      .slice(0, 2)
+      .map((span) => span.textContent.replace(/\s+/g, " ").trim());
+    const number = jersey?.match(/^#(\d{1,3})$/)?.[1];
+    return { name: name || null, jersey: number === undefined ? null : Number(number) };
   }
 
   function extractPlayerStats(warnings) {
@@ -447,6 +448,7 @@
     if (!table) return { headers: [], rows: [] };
 
     const headers = readHeaders();
+    const playerColumn = headers.findIndex((header) => /^player\b/.test(normalize(header)));
     const rows = [];
     let mismatched = 0;
 
@@ -455,11 +457,13 @@
       if (rowCells.length === 0) continue;
       if (rowCells.length !== headers.length) mismatched += 1;
 
+      const player = readPlayerCell(rowCells[playerColumn]);
       const cells = {};
       rowCells.forEach((cell, index) => {
-        cells[headers[index] ?? `column_${index + 1}`] = parseValue(textOf(cell));
+        cells[headers[index] ?? `column_${index + 1}`] =
+          index === playerColumn ? player.name : parseValue(textOf(cell));
       });
-      rows.push({ jersey: findJersey(cells), cells });
+      rows.push({ jersey: player.jersey, cells });
     }
 
     if (mismatched > 0) {
