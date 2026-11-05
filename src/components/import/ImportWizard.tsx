@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { primaryButton, secondaryButton } from "@/components/import/buttons";
 import GamesStep from "@/components/import/GamesStep";
 import MappingStep from "@/components/import/MappingStep";
@@ -120,6 +120,24 @@ export default function ImportWizard({ teams, roster, importedGames }: ImportWiz
     }
   }
 
+  // Reads the list whenever the games step shows without one, including after a
+  // refresh restores the wizard to this step. Only once per visit to the step: a
+  // failed or empty read shows its message and waits for "Read the list again",
+  // rather than reopening the Veo window in a loop.
+  const autoLoadTried = useRef(false);
+  const autoLoadGames = useEffectEvent((team: VeoTeam) => void loadGames(team));
+  const onGamesStep = state.step === 3;
+  const needsGames = onGamesStep && state.games.length === 0;
+  useEffect(() => {
+    if (!onGamesStep) {
+      autoLoadTried.current = false;
+      return;
+    }
+    if (!needsGames || !state.veoTeam || autoLoadTried.current) return;
+    autoLoadTried.current = true;
+    autoLoadGames(state.veoTeam);
+  }, [onGamesStep, needsGames, state.veoTeam]);
+
   function recordOutcome(slug: string, outcome: Outcome) {
     setState((current) => {
       const outcomes = { ...current.outcomes, [slug]: outcome };
@@ -180,10 +198,7 @@ export default function ImportWizard({ teams, roster, importedGames }: ImportWiz
           appTeamId={state.appTeamId}
           onAppTeamChange={(appTeamId) => update({ appTeamId, games: [], selected: [] })}
           onBack={() => update({ step: 1 })}
-          onContinue={(veoTeam) => {
-            update({ step: 3, veoTeam, games: [], selected: [] });
-            void loadGames(veoTeam);
-          }}
+          onContinue={(veoTeam) => update({ step: 3, veoTeam, games: [], selected: [] })}
         />
       )}
 
