@@ -59,8 +59,13 @@ export default function MappingStep({
   const choices = Object.fromEntries(
     jerseys.map((jersey) => [jersey, overrides[jersey] ?? suggestPlayer(jersey, roster)]),
   );
-  const unmatched = jerseys.filter((jersey) => !suggestPlayer(jersey, roster));
-  const matched = jerseys.filter((jersey) => suggestPlayer(jersey, roster));
+  // Jerseys needing a decision come first. Sorted by the suggestion rather than the
+  // current choice, so a row doesn't jump while it's being changed.
+  const orderedJerseys = [
+    ...jerseys.filter((jersey) => !suggestPlayer(jersey, roster)),
+    ...jerseys.filter((jersey) => suggestPlayer(jersey, roster)),
+  ];
+  const veoNames = new Map(payload.players.rows.map((row) => [row.jersey, row.name]));
   const undecided = jerseys.filter((jersey) => !choices[jersey]);
   const { matched: matchedEvents, unassigned: events } = attributeEvents(payload, choices, roster);
 
@@ -68,8 +73,11 @@ export default function MappingStep({
     const id = `jersey-${jersey}`;
     return (
       <li key={jersey} className="flex items-center gap-3">
-        <label htmlFor={id} className="w-14 font-mono text-sm">
-          #{jersey}
+        <label htmlFor={id} className="w-40 shrink-0 truncate text-sm">
+          <span className="font-mono">#{jersey}</span>
+          {veoNames.get(jersey) && (
+            <span className="text-neutral-600 dark:text-neutral-400"> {veoNames.get(jersey)}</span>
+          )}
         </label>
         <select
           id={id}
@@ -81,7 +89,7 @@ export default function MappingStep({
         >
           <option value="">Choose…</option>
           <PlayerOptions roster={roster} />
-          <option value={NOISE}>Skip: not a player (noise)</option>
+          <option value={NOISE}>Skip: opponent or not a player</option>
         </select>
       </li>
     );
@@ -171,29 +179,12 @@ export default function MappingStep({
       )}
 
       <section className="flex flex-col gap-3">
-        <h3 className="font-semibold">Jerseys with no roster match</h3>
-        {unmatched.length === 0 ? (
-          <p className="text-sm text-neutral-600 dark:text-neutral-400">
-            Every jersey matched your roster.
-          </p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {unmatched.map(renderJerseyRow)}
-          </ul>
-        )}
-        {matched.length > 0 && (
-          <details className="text-sm">
-            <summary className="cursor-pointer font-medium">
-              {matched.length} matched automatically
-            </summary>
-            <ul className="mt-2 flex flex-col gap-2">
-              {matched.map(renderJerseyRow)}
-            </ul>
-          </details>
-        )}
+        <h3 className="font-semibold">Jerseys Veo detected</h3>
         <p className="text-sm text-neutral-600 dark:text-neutral-400">
-          Assigning two jerseys to one player combines their stats for this game.
+          Veo can read one player as several jerseys. Assign them all to that player and their
+          stats combine for this game.
         </p>
+        <ul className="flex flex-col gap-2">{orderedJerseys.map(renderJerseyRow)}</ul>
       </section>
 
       {matchedEvents.length > 0 && (

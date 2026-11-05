@@ -435,16 +435,16 @@
     return stats;
   }
 
-  // The player cell holds a button reading "Deanna Motley#12", or "Jersey #3" for
-  // an unidentified player, then a <wa-popover> of stats that must not be read.
+  // The player cell holds a button reading "Deanna Motley#12", or "3Jersey #3–" for
+  // a player with no Veo profile, then a <wa-popover> of stats that must not be read.
   function readPlayerCell(cell) {
     const trigger = [...cell.querySelectorAll("button")].find((button) => !button.closest("wa-popover"));
     const text = (trigger?.textContent ?? "").replace(/\s+/g, " ").trim();
 
-    const unidentified = text.match(/^Jersey\s*#(\d+)$/i);
+    const unidentified = text.match(/^\d*\s*Jersey\s*#(\d+)/i);
     if (unidentified) return { name: null, jersey: Number(unidentified[1]) };
 
-    const named = text.match(/^(.+?)\s*#(\d+)$/);
+    const named = text.match(/^(.+?)\s*#(\d+)\D*$/);
     return named
       ? { name: named[1], jersey: Number(named[2]) }
       : { name: text || null, jersey: null };
@@ -504,7 +504,7 @@
   function readKeyEvent(text) {
     const credit = text.match(/\bby\s+(.+?)\s*$/i);
     const creditedTo = credit?.[1].replace(/\s*#\d+$/, "") ?? null;
-    const player = creditedTo && !/^jersey$/i.test(creditedTo) ? creditedTo : null;
+    const player = creditedTo && !/^\d*\s*jersey\b/i.test(creditedTo) ? creditedTo : null;
     const action = credit ? text.slice(0, credit.index) : text;
 
     const lower = action.toLowerCase();
