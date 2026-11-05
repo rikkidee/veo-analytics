@@ -52,4 +52,5 @@
   window.addEventListener("message", onWindowMessage);
   chrome.runtime.onMessage.addListener(onRuntimeMessage);
   window.__veoBridgeDispose = dispose;
+  console.info("[Veo Analytics Importer] bridge loaded");
 })();

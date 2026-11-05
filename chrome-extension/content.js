@@ -613,4 +613,10 @@
 
   chrome.runtime.onMessage.addListener(onMessage);
   window.__veoScraperDispose = () => chrome.runtime.onMessage.removeListener(onMessage);
+
+  // Content scripts run in an isolated world, so window.__veoScraperDispose can't
+  // be seen from the page. The DOM is shared, so this attribute shows it loaded.
+  const { version } = chrome.runtime.getManifest();
+  document.documentElement.dataset.veoAnalyticsImporter = version;
+  console.info(`[Veo Analytics Importer] content script ${version} loaded`);
 })();

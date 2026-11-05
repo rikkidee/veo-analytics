@@ -256,13 +256,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true; // Keeps the channel open for the async response.
 });
 
-// Tabs opened before the extension was installed or reloaded have no bridge, and
-// the wizard would report "not detected" until they were refreshed.
+// Declared content scripts only run on pages loaded after the extension. Tabs
+// already open would have no scripts until refreshed, so inject them here.
 chrome.runtime.onInstalled.addListener(async () => {
-  const tabs = await chrome.tabs.query({ url: APP_MATCH_PATTERNS });
-  for (const tab of tabs) {
-    chrome.scripting
-      .executeScript({ target: { tabId: tab.id }, files: ["bridge.js"] })
-      .catch(() => {});
+  const injections = [
+    [APP_MATCH_PATTERNS, "bridge.js"],
+    [[VEO_MATCH_PATTERN], "content.js"],
+  ];
+  for (const [url, file] of injections) {
+    const tabs = await chrome.tabs.query({ url });
+    for (const tab of tabs) {
+      chrome.scripting
+        .executeScript({ target: { tabId: tab.id }, files: [file] })
+        .catch(() => {});
+    }
   }
 });
