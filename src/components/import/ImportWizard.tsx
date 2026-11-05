@@ -18,6 +18,7 @@ type Step = 1 | 2 | 3 | 4 | 5;
 const STEP_NAMES = ["Install extension", "Connect to Veo", "Import games", "Map jerseys", "Complete"];
 const STORAGE_KEY = "veo-import-wizard-v1";
 const TEAM_POLL_MS = 3_000;
+const SAVED_NOTICE_MS = 3_000;
 
 type Outcome = "saved" | "skipped";
 
@@ -67,6 +68,14 @@ export default function ImportWizard({ teams, roster, importedGames }: ImportWiz
   const [state, setState] = useState<WizardState>(() => initialState(teams));
   const [gamesLoading, setGamesLoading] = useState(false);
   const [gamesError, setGamesError] = useState<string | null>(null);
+  // When the last save happened, or 0 once its notice has gone.
+  const [savedAt, setSavedAt] = useState(0);
+
+  useEffect(() => {
+    if (!savedAt) return;
+    const timer = setTimeout(() => setSavedAt(0), SAVED_NOTICE_MS);
+    return () => clearTimeout(timer);
+  }, [savedAt]);
 
   useEffect(() => {
     try {
@@ -153,7 +162,10 @@ export default function ImportWizard({ teams, roster, importedGames }: ImportWiz
       );
       return { ...current, outcomes, step: remaining ? current.step : 5 };
     });
-    if (outcome === "saved") router.refresh();
+    if (outcome === "saved") {
+      setSavedAt(Date.now());
+      router.refresh();
+    }
   }
 
   function recordResult(slug: string, result: GameResult) {
@@ -174,9 +186,18 @@ export default function ImportWizard({ teams, roster, importedGames }: ImportWiz
 
   const currentSlug = mappingQueue[0];
   const currentResult = currentSlug ? state.results[currentSlug] : null;
+  const gamesToMap = Object.values(state.results).filter((result) => result.ok).length;
 
   return (
     <div className="flex flex-col gap-6">
+      <div role="status" className="pointer-events-none fixed left-1/2 top-4 z-50 -translate-x-1/2">
+        {savedAt > 0 && (
+          <p className="whitespace-nowrap rounded-md bg-emerald-700 px-4 py-2 text-sm font-semibold text-white shadow-lg">
+            <span aria-hidden="true">✓ </span>Game saved!
+          </p>
+        )}
+      </div>
+
       <ol className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
         {STEP_NAMES.map((name, index) => {
           const number = index + 1;
@@ -233,7 +254,9 @@ export default function ImportWizard({ teams, roster, importedGames }: ImportWiz
           roster={teamRoster}
           payload={currentResult.data}
           game={state.games.find((game) => game.slug === currentSlug) ?? null}
-          remaining={mappingQueue.length}
+          position={gamesToMap - mappingQueue.length + 1}
+          total={gamesToMap}
+          justSaved={savedAt > 0}
           onDone={(outcome) => recordOutcome(currentSlug, outcome)}
         />
       )}

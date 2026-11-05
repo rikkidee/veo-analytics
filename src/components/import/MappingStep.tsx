@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { primaryButton, secondaryButton } from "@/components/import/buttons";
 import { describeSaveError, saveGame } from "@/lib/games";
 import { getSupabase } from "@/lib/supabase/client";
@@ -27,9 +27,23 @@ type MappingStepProps = {
   roster: RosterPlayer[];
   payload: VeoPayload;
   game: VeoGame | null;
-  remaining: number;
+  position: number;
+  total: number;
+  /** Plays a brief flash as this game appears. */
+  justSaved: boolean;
   onDone: (outcome: "saved" | "skipped") => void;
 };
+
+// Dates are plain calendar days, so UTC keeps them from shifting across time zones.
+function formatGameDate(date: string) {
+  const parsed = new Date(`${date}T00:00:00Z`);
+  return Number.isNaN(parsed.getTime())
+    ? null
+    : new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeZone: "UTC" }).format(parsed);
+}
+
+// Veo shows match minutes as 15', which the scraper stores as "15".
+const formatEventTime = (time: string) => (/^\d+$/.test(time) ? `${time}'` : time);
 
 function PlayerOptions({ roster }: { roster: RosterPlayer[] }) {
   return roster.map((player) => (
@@ -44,7 +58,9 @@ export default function MappingStep({
   roster,
   payload,
   game,
-  remaining,
+  position,
+  total,
+  justSaved,
   onDone,
 }: MappingStepProps) {
   const jerseys = detectedJerseys(payload);
@@ -57,6 +73,14 @@ export default function MappingStep({
   const [eventChoices, setEventChoices] = useState<Record<number, string>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Saving happens at the bottom of a long page. Each game mounts fresh, so this
+  // brings the next one into view and moves focus off the button that just went.
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    heading.current?.focus({ preventScroll: true });
+    window.scrollTo(0, 0);
+  }, []);
 
   const choices = Object.fromEntries(
     jerseys.map((jersey) => [jersey, overrides[jersey] ?? suggestPlayer(jersey, roster)]),
@@ -132,20 +156,29 @@ export default function MappingStep({
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-      <div>
-        <h2 className="text-lg font-semibold">Map jerseys</h2>
-        <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
-          {remaining} {remaining === 1 ? "game" : "games"} left to review. Each game saves when you
-          confirm it.
-        </p>
-        <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
+      <div className="flex flex-col gap-3">
+        <div
+          className={`rounded-lg border border-neutral-200 p-4 dark:border-neutral-800 ${justSaved ? "saved-flash" : ""}`}
+        >
+          <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+            Game {position} of {total}
+          </p>
+          <h2 ref={heading} tabIndex={-1} className="mt-1 text-xl font-semibold outline-none">
+            {label.trim() || "Untitled game"}
+          </h2>
+          <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
+            {formatGameDate(date) ?? "Date needed"}
+            {opponent.trim() ? ` · vs ${opponent.trim()}` : ""}
+          </p>
+        </div>
+        <p className="text-sm text-neutral-600 dark:text-neutral-400">
           This is a one-time setup for each game. It takes about 2–3 minutes, and once it&apos;s
           done it&apos;s saved, so you won&apos;t need to map this game again.
         </p>
       </div>
 
       <fieldset className="grid gap-3 sm:grid-cols-3">
-        <legend className="mb-2 font-semibold">Game</legend>
+        <legend className="mb-2 font-semibold">Game details</legend>
         <label className="flex flex-col gap-1 text-sm">
           <span className="font-medium">Name</span>
           <input
@@ -253,29 +286,45 @@ export default function MappingStep({
           <div>
             <h3 className="font-semibold">Unassigned goals and shots</h3>
             <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
-              These couldn&apos;t be matched to a player on your roster. Leave any that aren&apos;t
-              your team&apos;s, or that you can&apos;t identify, as unassigned.
+              Veo tracks shots and goals during the match but sometimes can&apos;t identify which
+              player took them. Review the events below and assign them to the correct player from
+              your roster. Leave any that belong to the opponent as unassigned.
+            </p>
+            <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
+              Each link opens the match video, where you can scrub to the time shown. The video may
+              also include warm-up or halftime, so the moment can be later than the match minute.
             </p>
           </div>
           <ul className="flex flex-col gap-3">
             {events.map(({ event: keyEvent, index }) => {
               const id = `event-${index}`;
               return (
-                <li key={id} className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+                <li key={id} className="flex flex-wrap items-center gap-x-3 gap-y-1 sm:flex-nowrap">
+                  <span className="w-12 shrink-0 font-mono text-lg font-semibold tabular-nums">
+                    {keyEvent.time ? formatEventTime(keyEvent.time) : "–"}
+                  </span>
                   <label htmlFor={id} className="min-w-0 flex-1 text-sm">
                     <span className="font-medium capitalize">{keyEvent.type}</span>
-                    {keyEvent.time ? ` at ${keyEvent.time}` : ""}
                     <span className="block text-xs text-neutral-600 dark:text-neutral-400">
                       {keyEvent.description}
                     </span>
                   </label>
+                  <a
+                    href={matchVideoUrl(payload.slug)}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label={`Open the match video to find this ${keyEvent.type}${keyEvent.time ? ` at ${formatEventTime(keyEvent.time)}` : ""}`}
+                    className="shrink-0 text-sm font-medium text-emerald-700 hover:underline dark:text-emerald-400"
+                  >
+                    Video →
+                  </a>
                   <select
                     id={id}
                     value={eventChoices[index] ?? ""}
                     onChange={(event) =>
                       setEventChoices((current) => ({ ...current, [index]: event.target.value }))
                     }
-                    className={selectClass}
+                    className={`${selectClass} basis-full sm:basis-0`}
                   >
                     <option value="">Leave unassigned</option>
                     <PlayerOptions roster={roster} />
