@@ -215,6 +215,11 @@ export default function MappingStep({
           >
             Watch the match video to identify players →
           </a>
+          <p className="text-neutral-600 dark:text-neutral-400">
+            <strong className="font-semibold text-neutral-900 dark:text-neutral-100">Tip:</strong>{" "}
+            In the Veo match report, click any jersey number in the player stats table to see their
+            highlighted clips in the video. You&apos;ll quickly recognize who that player is.
+          </p>
         </div>
         <ul className="flex flex-col gap-2">{orderedJerseys.map(renderJerseyRow)}</ul>
       </section>
