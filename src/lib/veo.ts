@@ -1,7 +1,9 @@
-import { combineStats, type StatLine } from "@/lib/stats";
+import { combineStats, EVENT_COLUMNS, type StatLine } from "@/lib/stats";
 
 export type VeoPlayerRow = {
   jersey: number | null;
+  /** Absent on reports read before names were captured. */
+  name?: string | null;
   cells: StatLine;
 };
 
@@ -9,6 +11,8 @@ export type VeoKeyEvent = {
   type: "goal" | "shot";
   time: string | null;
   jersey: number | null;
+  /** The name Veo credits, as in "Shot by Deanna Motley". */
+  player?: string | null;
   description: string;
 };
 
@@ -71,8 +75,80 @@ export function suggestPlayer(jersey: number, roster: RosterPlayer[]): string {
   return matches.length === 1 ? matches[0].id : "";
 }
 
-export function unassignedEvents(payload: VeoPayload) {
-  return payload.keyEvents.filter((event) => event.jersey === null);
+export type EventAssignment = { type: VeoKeyEvent["type"]; playerId: string };
+
+const normalizeName = (name: string) => name.replace(/\s+/g, " ").trim().toLowerCase();
+
+/**
+ * Prefers the jersey decision for the player table row with this name, so a
+ * changed mapping carries over. Otherwise needs exactly one roster player by name.
+ */
+function findEventPlayer(
+  name: string,
+  payload: VeoPayload,
+  choices: Record<number, JerseyChoice>,
+  roster: RosterPlayer[],
+): string | null {
+  const wanted = normalizeName(name);
+  const row = payload.players.rows.find(
+    (other) => other.jersey !== null && other.name && normalizeName(other.name) === wanted,
+  );
+  const choice = row?.jersey == null ? "" : choices[row.jersey];
+  if (choice === NOISE) return null;
+  if (choice) return choice;
+
+  const matches = roster.filter((player) => normalizeName(player.name) === wanted);
+  return matches.length === 1 ? matches[0].id : null;
+}
+
+/**
+ * Sorts events credited by name from those needing a person to decide. Events
+ * carrying a jersey are in neither list, as the player table already covers them.
+ * `index` is the event's position in the payload, which stays the same when a
+ * jersey decision moves events between lists.
+ */
+export function attributeEvents(
+  payload: VeoPayload,
+  choices: Record<number, JerseyChoice>,
+  roster: RosterPlayer[],
+) {
+  const matched: { event: VeoKeyEvent; playerId: string }[] = [];
+  const unassigned: { event: VeoKeyEvent; index: number }[] = [];
+  payload.keyEvents.forEach((event, index) => {
+    if (event.jersey !== null) return;
+    const playerId = event.player ? findEventPlayer(event.player, payload, choices, roster) : null;
+    if (playerId) matched.push({ event, playerId });
+    else unassigned.push({ event, index });
+  });
+  return { matched, unassigned };
+}
+
+/**
+ * Each assignment adds 1 to the player's total, and Veo's table may already count
+ * the event. Only what the table is missing gets added: a player with 2 named
+ * shots and "Shots: 2" gets nothing, and with no Shots column gets 2.
+ */
+export function creditsForMatchedEvents(
+  payload: VeoPayload,
+  matched: { event: VeoKeyEvent; playerId: string }[],
+  choices: Record<number, JerseyChoice>,
+): EventAssignment[] {
+  const counts = new Map<string, EventAssignment & { count: number }>();
+  for (const { event, playerId } of matched) {
+    const key = `${playerId}:${event.type}`;
+    const entry = counts.get(key) ?? { type: event.type, playerId, count: 0 };
+    counts.set(key, { ...entry, count: entry.count + 1 });
+  }
+
+  return [...counts.values()].flatMap(({ type, playerId, count }) => {
+    const column = EVENT_COLUMNS[type].toLowerCase();
+    const inTable = payload.players.rows
+      .filter((row) => row.jersey !== null && choices[row.jersey] === playerId)
+      .flatMap((row) => Object.entries(row.cells))
+      .filter(([header]) => header.trim().toLowerCase() === column)
+      .reduce((sum, [, value]) => sum + (typeof value === "number" ? value : 0), 0);
+    return Array.from({ length: Math.max(0, count - inTable) }, () => ({ type, playerId }));
+  });
 }
 
 export type PlayerGameStatRecord = {

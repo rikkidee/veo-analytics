@@ -5,10 +5,11 @@ import { primaryButton, secondaryButton } from "@/components/import/buttons";
 import { describeSaveError, saveGame } from "@/lib/games";
 import { getSupabase } from "@/lib/supabase/client";
 import {
+  attributeEvents,
+  creditsForMatchedEvents,
   detectedJerseys,
   NOISE,
   suggestPlayer,
-  unassignedEvents,
   type RosterPlayer,
   type VeoGame,
   type VeoPayload,
@@ -45,7 +46,6 @@ export default function MappingStep({
   onDone,
 }: MappingStepProps) {
   const jerseys = detectedJerseys(payload);
-  const events = unassignedEvents(payload);
   const unreadRows = payload.players.rows.filter((row) => row.jersey === null).length;
 
   const [label, setLabel] = useState(game?.title || payload.pageTitle || "");
@@ -62,6 +62,7 @@ export default function MappingStep({
   const unmatched = jerseys.filter((jersey) => !suggestPlayer(jersey, roster));
   const matched = jerseys.filter((jersey) => suggestPlayer(jersey, roster));
   const undecided = jerseys.filter((jersey) => !choices[jersey]);
+  const { matched: matchedEvents, unassigned: events } = attributeEvents(payload, choices, roster);
 
   function renderJerseyRow(jersey: number) {
     const id = `jersey-${jersey}`;
@@ -99,9 +100,12 @@ export default function MappingStep({
         opponent,
         roster,
         choices,
-        eventAssignments: events.flatMap((keyEvent, index) =>
-          eventChoices[index] ? [{ type: keyEvent.type, playerId: eventChoices[index] }] : [],
-        ),
+        eventAssignments: [
+          ...creditsForMatchedEvents(payload, matchedEvents, choices),
+          ...events.flatMap(({ event: keyEvent, index }) =>
+            eventChoices[index] ? [{ type: keyEvent.type, playerId: eventChoices[index] }] : [],
+          ),
+        ],
       });
       onDone("saved");
     } catch (cause) {
@@ -192,17 +196,41 @@ export default function MappingStep({
         </p>
       </section>
 
+      {matchedEvents.length > 0 && (
+        <details className="text-sm">
+          <summary className="cursor-pointer font-medium">
+            {matchedEvents.length} {matchedEvents.length === 1 ? "goal or shot" : "goals and shots"}{" "}
+            matched by name
+          </summary>
+          <p className="mt-2 text-neutral-600 dark:text-neutral-400">
+            Anything Veo&apos;s player table already counts won&apos;t be counted twice.
+          </p>
+          <ul className="mt-2 flex flex-col gap-1">
+            {matchedEvents.map(({ event: keyEvent, playerId }, position) => {
+              const player = roster.find((other) => other.id === playerId);
+              return (
+                <li key={position}>
+                  <span className="capitalize">{keyEvent.type}</span>
+                  {keyEvent.time ? ` at ${keyEvent.time}` : ""}: #{player?.default_jersey}{" "}
+                  {player?.name}
+                </li>
+              );
+            })}
+          </ul>
+        </details>
+      )}
+
       {events.length > 0 && (
         <section className="flex flex-col gap-3">
           <div>
             <h3 className="font-semibold">Unassigned goals and shots</h3>
             <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
-              Veo couldn&apos;t tell who these belong to. Leave any that aren&apos;t your
-              team&apos;s, or that you can&apos;t identify, as unassigned.
+              These couldn&apos;t be matched to a player on your roster. Leave any that aren&apos;t
+              your team&apos;s, or that you can&apos;t identify, as unassigned.
             </p>
           </div>
           <ul className="flex flex-col gap-3">
-            {events.map((keyEvent, index) => {
+            {events.map(({ event: keyEvent, index }) => {
               const id = `event-${index}`;
               return (
                 <li key={id} className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">

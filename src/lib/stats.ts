@@ -143,7 +143,7 @@ export type TeamSummary = {
 
 export type MetricMode = "total" | "average" | "per60";
 
-const EVENT_COLUMNS: Record<string, string> = { goal: "Goals", shot: "Shots" };
+export const EVENT_COLUMNS: Record<string, string> = { goal: "Goals", shot: "Shots" };
 
 // Listed first when present, in this order.
 const PREFERRED_METRICS = [

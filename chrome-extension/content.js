@@ -27,8 +27,9 @@
     "Loose ball recoveries",
     "Saves",
   ];
-  const OPTION_SELECTOR =
-    'button, [role="button"], label, [role="checkbox"], [role="option"], [role="menuitemcheckbox"], [role="switch"]';
+  // Veo's controls include Web Awesome elements such as <wa-button>.
+  const BUTTON_SELECTOR = 'button, wa-button, [role="button"]';
+  const OPTION_SELECTOR = `${BUTTON_SELECTOR}, label, wa-checkbox, wa-switch, wa-option, [role="checkbox"], [role="option"], [role="menuitemcheckbox"], [role="switch"]`;
   const REPORT_READY_TIMEOUT_MS = 30_000;
   const GAME_LINKS_TIMEOUT_MS = 15_000;
   const PLAYER_TABLE_TIMEOUT_MS = 10_000;
@@ -74,7 +75,7 @@
   }
 
   function findButton(pattern) {
-    return [...document.querySelectorAll('button, [role="button"]')].find((button) =>
+    return [...document.querySelectorAll(BUTTON_SELECTOR)].find((button) =>
       pattern.test(textOf(button)),
     );
   }
@@ -376,7 +377,9 @@
       return count;
     }
 
-    const scope = applyButton.closest('[role="dialog"], [role="menu"]') ?? document.body;
+    const scope =
+      applyButton.closest('wa-dialog, wa-drawer, wa-popover, wa-dropdown, [role="dialog"], [role="menu"]') ??
+      document.body;
     for (const label of missing) {
       const option = findColumnOption(scope, label);
       if (!option) {
@@ -432,15 +435,19 @@
     return stats;
   }
 
-  // The player cell starts <span>Deanna Motley</span><span>#12</span>, followed by
-  // a stats popup full of other text and numbers, so only those two spans are read.
-  // The # is required: without it, the second span may belong to the popup.
+  // The player cell holds a button reading "Deanna Motley#12", or "Jersey #3" for
+  // an unidentified player, then a <wa-popover> of stats that must not be read.
   function readPlayerCell(cell) {
-    const [name, jersey] = [...cell.querySelectorAll("span")]
-      .slice(0, 2)
-      .map((span) => span.textContent.replace(/\s+/g, " ").trim());
-    const number = jersey?.match(/^#(\d{1,3})$/)?.[1];
-    return { name: name || null, jersey: number === undefined ? null : Number(number) };
+    const trigger = [...cell.querySelectorAll("button")].find((button) => !button.closest("wa-popover"));
+    const text = (trigger?.textContent ?? "").replace(/\s+/g, " ").trim();
+
+    const unidentified = text.match(/^Jersey\s*#(\d+)$/i);
+    if (unidentified) return { name: null, jersey: Number(unidentified[1]) };
+
+    const named = text.match(/^(.+?)\s*#(\d+)$/);
+    return named
+      ? { name: named[1], jersey: Number(named[2]) }
+      : { name: text || null, jersey: null };
   }
 
   function extractPlayerStats(warnings) {
@@ -463,7 +470,7 @@
         cells[headers[index] ?? `column_${index + 1}`] =
           index === playerColumn ? player.name : parseValue(textOf(cell));
       });
-      rows.push({ jersey: player.jersey, cells });
+      rows.push({ jersey: player.jersey, name: player.name, cells });
     }
 
     if (mismatched > 0) {
@@ -492,19 +499,27 @@
     return null;
   }
 
+  // Events read like "15' · MIS Shot Shot by Deanna Motley". The name is read
+  // separately so it can't affect the event's type or jersey.
   function readKeyEvent(text) {
-    const lower = text.toLowerCase();
+    const credit = text.match(/\bby\s+(.+?)\s*$/i);
+    const creditedTo = credit?.[1].replace(/\s*#\d+$/, "") ?? null;
+    const player = creditedTo && !/^jersey$/i.test(creditedTo) ? creditedTo : null;
+    const action = credit ? text.slice(0, credit.index) : text;
+
+    const lower = action.toLowerCase();
     let type = null;
     if (/\bgoal\b/.test(lower) && !/\bgoal\s*kicks?\b/.test(lower)) type = "goal";
     else if (/\bshots?\b/.test(lower)) type = "shot";
     if (!type) return null;
 
     const time = text.match(/\b(\d{1,3}:\d{2})\b/)?.[1] ?? text.match(/\b(\d{1,3})['’]/)?.[1] ?? null;
-    const jersey = text.match(/(?:#|\bno\.?\s*|\bnumber\s+)(\d{1,3})\b/i)?.[1];
+    const jersey = player ? undefined : text.match(/(?:#|\bno\.?\s*|\bnumber\s+)(\d{1,3})\b/i)?.[1];
     return {
       type,
       time,
       jersey: jersey === undefined ? null : Number(jersey),
+      player,
       description: text.slice(0, 160),
     };
   }
