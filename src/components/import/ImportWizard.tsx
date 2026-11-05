@@ -55,6 +55,9 @@ function initialState(teams: AppTeam[]): WizardState {
     const stored = window.sessionStorage.getItem(STORAGE_KEY);
     if (!stored) return fresh;
     const restored = JSON.parse(stored) as WizardState;
+    // A finished import has nothing left to resume, and the completion step's only
+    // way forward is the dashboard. Imported games come back from the database.
+    if (restored.step === 5) return fresh;
     return teams.some((team) => team.id === restored.appTeamId) ? restored : fresh;
   } catch {
     return fresh;
@@ -269,22 +272,7 @@ export default function ImportWizard({ teams, roster, importedGames }: ImportWiz
         </div>
       )}
 
-      {state.step === 5 && (
-        <CompleteStep
-          state={state}
-          onImportMore={() =>
-            setState((current) => ({
-              ...current,
-              step: 3,
-              results: {},
-              outcomes: {},
-              selected: current.games
-                .filter((game) => game.hasReport !== false && !isImported(game.slug))
-                .map((game) => game.slug),
-            }))
-          }
-        />
-      )}
+      {state.step === 5 && <CompleteStep state={state} />}
     </div>
   );
 }
@@ -497,13 +485,7 @@ function ConnectStep({
   );
 }
 
-function CompleteStep({
-  state,
-  onImportMore,
-}: {
-  state: WizardState;
-  onImportMore: () => void;
-}) {
+function CompleteStep({ state }: { state: WizardState }) {
   const outcomes = Object.values(state.outcomes);
   const saved = outcomes.filter((outcome) => outcome === "saved").length;
   const skipped = outcomes.length - saved;
@@ -519,14 +501,9 @@ function CompleteStep({
         {skipped > 0 && <li>{skipped} skipped</li>}
         {failed > 0 && <li>{failed} could not be read from Veo</li>}
       </ul>
-      <div className="flex flex-wrap gap-3">
-        <Link href="/dashboard" className={primaryButton}>
-          View Dashboard
-        </Link>
-        <button type="button" className={secondaryButton} onClick={onImportMore}>
-          Import more games
-        </button>
-      </div>
+      <Link href="/dashboard" className={primaryButton}>
+        Go to Dashboard
+      </Link>
     </section>
   );
 }
