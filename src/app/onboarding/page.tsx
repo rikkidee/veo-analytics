@@ -1,7 +1,15 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
+import { Suspense } from "react";
 import RosterForm from "@/components/RosterForm";
+import { getCurrentUser } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Roster setup | Veo Analytics" };
+
+async function SignedInRosterForm() {
+  if (!(await getCurrentUser())) redirect("/auth");
+  return <RosterForm />;
+}
 
 export default function OnboardingPage() {
   return (
@@ -12,7 +20,9 @@ export default function OnboardingPage() {
           Step 1 of 2. Add your team and the jersey each player usually wears.
         </p>
       </div>
-      <RosterForm />
+      <Suspense fallback={<div className="h-64" aria-busy="true" />}>
+        <SignedInRosterForm />
+      </Suspense>
     </div>
   );
 }

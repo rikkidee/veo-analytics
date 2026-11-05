@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import JerseyMapper, { type RosterPlayer } from "@/components/JerseyMapper";
-import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
+import { getSupabase, isSupabaseConfigured } from "@/lib/supabase/client";
 import {
   decodeImportFragment,
   detectedJerseys,

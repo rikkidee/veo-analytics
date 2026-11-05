@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
+import { Suspense } from "react";
+import UserMenu from "@/components/UserMenu";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -39,6 +41,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             <Link href="/onboarding/games" className="hover:underline">
               Import Game
             </Link>
+            <div className="ml-auto min-w-0">
+              <Suspense fallback={null}>
+                <UserMenu />
+              </Suspense>
+            </div>
           </nav>
         </header>
         <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
