@@ -5,12 +5,14 @@ import Script from "next/script";
 import { Activity, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
 import { CHART_JS_URL, ChartReady } from "@/components/dashboard/Chart";
 import GameLogTab from "@/components/dashboard/GameLogTab";
+import ImportScreen from "@/components/dashboard/ImportScreen";
 import LeaderboardTab from "@/components/dashboard/LeaderboardTab";
 import PlayersTab from "@/components/dashboard/PlayersTab";
 import { useAutoReports } from "@/components/dashboard/reports";
 import TeamAnalysis from "@/components/dashboard/TeamAnalysis";
 import TeamTab from "@/components/dashboard/TeamTab";
 import type { MappingPreview } from "@/components/import/MappingStep";
+import { useImportRun } from "@/components/import/ImportRunner";
 import ImportWizard from "@/components/import/ImportWizard";
 import { PanelLink, showPanel, useOpenPanel, type Panel } from "@/components/panels/links";
 import MapPanel from "@/components/panels/MapPanel";
@@ -170,9 +172,14 @@ export default function Dashboard({ data: saved, email }: { data: DashboardData;
     refresh();
   }
 
+  // Stats first appear complete, so they wait for the import and then for its data.
+  const { run, busy: importing, stop: stopImport } = useImportRun();
+  const heldBy = run?.holdDashboard && importing && data.teams.some((team) => team.id === run.teamId) ? run : null;
+
   // Teams arrive newest first, and the newest can be empty, as adding a team doesn't
   // bring its games. Open on the newest one with games until someone chooses.
   const teamId =
+    heldBy?.teamId ??
     data.teams.find((team) => team.id === chosenTeamId)?.id ??
     (data.teams.find((team) => data.games.some((game) => game.team_id === team.id)) ?? data.teams[0])?.id ??
     "";
@@ -231,7 +238,7 @@ export default function Dashboard({ data: saved, email }: { data: DashboardData;
             <img src={currentTeam.logo_url} alt="" />
           )}
           <h1>{currentTeam?.name ?? "Welcome to Veo Analytics"}</h1>
-          {data.teams.length > 1 && (
+          {data.teams.length > 1 && !heldBy && (
             <select
               aria-label="Team"
               value={teamId}
@@ -250,7 +257,11 @@ export default function Dashboard({ data: saved, email }: { data: DashboardData;
           )}
         </div>
 
-        {model.games.length === 0 ? (
+        {heldBy ? (
+          <div className="container">
+            <ImportScreen run={heldBy} onStop={stopImport} />
+          </div>
+        ) : model.games.length === 0 ? (
           <div className="container">
             <p style={{ marginTop: 32 }}>
               {currentTeam ? (
@@ -302,7 +313,7 @@ export default function Dashboard({ data: saved, email }: { data: DashboardData;
                 .filter((player) => player.team_id === teamId)
                 .map(({ id, team_id, name, default_jersey }) => ({ id, team_id, name, default_jersey }))}
               importedUrls={data.games.filter((game) => game.team_id === teamId).map((game) => game.veo_url)}
-              onFirstGameSaved={() => showPanel(null)}
+              onStarted={() => showPanel(null)}
               onClose={() => showPanel(null)}
             />
           ) : (

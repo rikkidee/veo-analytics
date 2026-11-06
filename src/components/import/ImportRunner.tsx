@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   createContext,
   use,
@@ -29,6 +29,8 @@ export type ImportRun = {
   teamId: string;
   games: VeoGame[];
   roster: RosterPlayer[];
+  /** The dashboard shows progress instead of stats until this import is over. */
+  holdDashboard: boolean;
   saved: number;
   failures: Failure[];
   active: boolean;
@@ -41,10 +43,11 @@ type ImportRunContext = {
   run: ImportRun | null;
   /** True until an import has ended and the page is showing its results. */
   busy: boolean;
-  start: (input: { teamId: string; games: VeoGame[]; roster: RosterPlayer[] }) => void;
+  start: (input: { teamId: string; games: VeoGame[]; roster: RosterPlayer[]; holdDashboard: boolean }) => void;
+  stop: () => void;
 };
 
-const Context = createContext<ImportRunContext>({ run: null, busy: false, start: () => {} });
+const Context = createContext<ImportRunContext>({ run: null, busy: false, start: () => {}, stop: () => {} });
 
 export const useImportRun = () => use(Context);
 
@@ -54,6 +57,7 @@ export const useImportRun = () => use(Context);
  */
 export default function ImportRunner({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [isRefreshing, startRefresh] = useTransition();
   const [run, setRun] = useState<ImportRun | null>(null);
   const runRef = useRef<ImportRun | null>(null);
@@ -150,11 +154,11 @@ export default function ImportRunner({ children }: { children: ReactNode }) {
   }, [active, finish]);
 
   const start = useCallback<ImportRunContext["start"]>(
-    ({ teamId, games, roster }) => {
+    ({ teamId, games, roster, holdDashboard }) => {
       if (runRef.current?.active) return;
       saves.current = Promise.resolve();
       lastActivity.current = Date.now();
-      runRef.current = { teamId, games, roster, saved: 0, failures: [], active: true, stopping: false, error: null };
+      runRef.current = { teamId, games, roster, holdDashboard, saved: 0, failures: [], active: true, stopping: false, error: null };
       update((current) => current);
       startImport(games.map((game) => game.slug)).then(
         (response) => {
@@ -166,6 +170,11 @@ export default function ImportRunner({ children }: { children: ReactNode }) {
     [finish, update],
   );
 
+  const stop = useCallback(() => {
+    update((current) => ({ ...current, stopping: true }));
+    void cancelImport().catch(() => {});
+  }, [update]);
+
   function dismiss() {
     runRef.current = null;
     setRun(null);
@@ -176,14 +185,17 @@ export default function ImportRunner({ children }: { children: ReactNode }) {
     }
   }
 
-  const value = useMemo(() => ({ run, busy: active || isRefreshing, start }), [run, active, isRefreshing, start]);
+  const value = useMemo(
+    () => ({ run, busy: active || isRefreshing, start, stop }),
+    [run, active, isRefreshing, start, stop],
+  );
   const total = run?.games.length ?? 0;
   const handled = (run?.saved ?? 0) + (run?.failures.length ?? 0);
 
   return (
     <Context value={value}>
       {children}
-      {run && (
+      {run && !(run.active && run.holdDashboard && pathname === "/dashboard") && (
         <div
           role="status"
           className="fixed bottom-4 left-1/2 z-50 flex w-[min(34rem,calc(100vw-2rem))] -translate-x-1/2 xl:right-6 xl:left-auto xl:translate-x-0 flex-col gap-2 rounded-lg border border-neutral-800 bg-neutral-900 p-4 text-sm shadow-lg"
@@ -198,10 +210,7 @@ export default function ImportRunner({ children }: { children: ReactNode }) {
                   <button
                     type="button"
                     className="shrink-0 text-neutral-400 hover:underline"
-                    onClick={() => {
-                      update((current) => ({ ...current, stopping: true }));
-                      void cancelImport().catch(() => {});
-                    }}
+                    onClick={stop}
                   >
                     Stop
                   </button>

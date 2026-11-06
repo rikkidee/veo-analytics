@@ -20,8 +20,8 @@ type ImportWizardProps = {
   team: AppTeam;
   roster: RosterPlayer[];
   importedUrls: (string | null | undefined)[];
-  /** Called when the first game is in, so the dashboard can show it. */
-  onFirstGameSaved: () => void;
+  /** Called when games start coming in, so the panel can get out of the way. */
+  onStarted: () => void;
   onClose: () => void;
 };
 
@@ -39,7 +39,7 @@ function initialState(teamId: string): WizardState {
   }
 }
 
-export default function ImportWizard({ team, roster, importedUrls, onFirstGameSaved, onClose }: ImportWizardProps) {
+export default function ImportWizard({ team, roster, importedUrls, onStarted, onClose }: ImportWizardProps) {
   const { run } = useImportRun();
   const [state, setState] = useState<WizardState>(() => initialState(team.id));
 
@@ -73,7 +73,7 @@ export default function ImportWizard({ team, roster, importedUrls, onFirstGameSa
     return (
       <Working
         title={`Reading ${run.games.length} ${run.games.length === 1 ? "game" : "games"} from Veo…`}
-        detail="Each one appears on your dashboard as soon as it's saved, and you can close this panel while they come in."
+        detail="You can close this panel while they come in."
       />
     );
   }
@@ -117,7 +117,7 @@ export default function ImportWizard({ team, roster, importedUrls, onFirstGameSa
           teamId={team.id}
           roster={roster}
           importedUrls={importedUrls}
-          onFirstGameSaved={onFirstGameSaved}
+          onStarted={onStarted}
           onClose={onClose}
           onBack={() => update({ step: 2 })}
         />
@@ -329,7 +329,7 @@ function ImportStep({
   teamId,
   roster,
   importedUrls,
-  onFirstGameSaved,
+  onStarted,
   onClose,
   onBack,
 }: {
@@ -337,22 +337,21 @@ function ImportStep({
   teamId: string;
   roster: RosterPlayer[];
   importedUrls: (string | null | undefined)[];
-  onFirstGameSaved: () => void;
+  onStarted: () => void;
   onClose: () => void;
   onBack: () => void;
 }) {
   const { run, start } = useImportRun();
   const [games, setGames] = useState<VeoGame[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [startedHere, setStartedHere] = useState(false);
 
   const eligible = games?.filter((game) => game.hasReport !== false) ?? [];
   const isSaved = (game: VeoGame) => importedUrls.includes(reportUrl(game.slug));
   const newGames = eligible.filter((game) => !isSaved(game));
 
-  function begin(list: VeoGame[]) {
-    setStartedHere(true);
-    start({ teamId, games: list, roster });
+  function begin(list: VeoGame[], holdDashboard: boolean) {
+    start({ teamId, games: list, roster, holdDashboard });
+    onStarted();
   }
 
   async function load() {
@@ -370,7 +369,7 @@ function ImportStep({
         return;
       }
       const fresh = response.games.filter((game) => game.hasReport !== false && !importedUrls.includes(reportUrl(game.slug)));
-      if (fresh.length > 0 && !run?.active) begin(fresh);
+      if (fresh.length > 0 && !run?.active) begin(fresh, true);
     } catch (cause) {
       setError((cause as Error).message);
     }
@@ -389,14 +388,7 @@ function ImportStep({
     return () => clearTimeout(timer);
   }, []);
 
-  const firstGameSaved = startedHere && (run?.saved ?? 0) > 0;
-  const announceFirstGame = useEffectEvent(onFirstGameSaved);
-  useEffect(() => {
-    if (firstGameSaved) announceFirstGame();
-  }, [firstGameSaved]);
-
   const importing = Boolean(run?.active);
-  const finishedWithNothing = startedHere && run && !run.active && run.saved === 0;
 
   return (
     <section className="flex flex-col items-start gap-4">
@@ -408,7 +400,7 @@ function ImportStep({
       {importing && (
         <Working
           title={`Reading ${run?.games.length} ${run?.games.length === 1 ? "game" : "games"} from Veo…`}
-          detail="This panel closes as soon as the first one is in, usually within a minute, so you can see your dashboard. The rest keep coming while you look around."
+          detail="You can close this panel while they come in."
         />
       )}
       {error && (
@@ -416,13 +408,8 @@ function ImportStep({
           {error}
         </p>
       )}
-      {finishedWithNothing && (
-        <p role="alert" className="text-sm text-red-700 dark:text-red-400">
-          No games could be imported. The details are in the message at the bottom of the page.
-        </p>
-      )}
 
-      {games && !importing && !finishedWithNothing && newGames.length === 0 && eligible.length > 0 && (
+      {games && !importing && newGames.length === 0 && eligible.length > 0 && (
         <>
           <p className="text-sm">
             <span aria-hidden="true" className="text-success">✓ </span>
@@ -432,7 +419,7 @@ function ImportStep({
             <button type="button" className={primaryButton} onClick={onClose}>
               Back to Dashboard
             </button>
-            <button type="button" className={secondaryButton} onClick={() => begin(eligible)}>
+            <button type="button" className={secondaryButton} onClick={() => begin(eligible, false)}>
               Import all {eligible.length} again
             </button>
           </div>
@@ -447,7 +434,7 @@ function ImportStep({
           <button type="button" className={secondaryButton} onClick={onBack}>
             Back
           </button>
-          {(error || finishedWithNothing) && (
+          {error && (
             <button type="button" className={primaryButton} onClick={() => void load()}>
               Try again
             </button>
