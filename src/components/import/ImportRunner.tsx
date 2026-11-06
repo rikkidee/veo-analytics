@@ -186,7 +186,7 @@ export default function ImportRunner({ children }: { children: ReactNode }) {
       {run && (
         <div
           role="status"
-          className="fixed bottom-4 left-1/2 z-50 flex w-[min(34rem,calc(100vw-2rem))] -translate-x-1/2 xl:left-4 xl:translate-x-0 flex-col gap-2 rounded-lg border border-neutral-800 bg-neutral-900 p-4 text-sm shadow-lg"
+          className="fixed bottom-4 left-1/2 z-50 flex w-[min(34rem,calc(100vw-2rem))] -translate-x-1/2 xl:right-6 xl:left-auto xl:translate-x-0 flex-col gap-2 rounded-lg border border-neutral-800 bg-neutral-900 p-4 text-sm shadow-lg"
         >
           {run.active ? (
             <>

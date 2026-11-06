@@ -11,9 +11,9 @@ export const PANEL_TITLES: Record<Panel, string> = {
 };
 
 /**
- * Holds a tool at the side of the dashboard, which stays usable beside it. Nothing
- * here blocks the page. Hiding keeps the tool's state, so it's quick to look at the
- * stats and come straight back.
+ * Holds a tool at the left of the dashboard. The dim is only a cue that the tool is
+ * on top: the dashboard stays usable, so numbers can be watched while mapping. Hiding
+ * keeps the tool's state, so it's quick to look at the stats and come straight back.
  */
 export default function PanelDrawer({
   panel,
@@ -41,17 +41,23 @@ export default function PanelDrawer({
 
   return (
     <>
+      <div
+        aria-hidden="true"
+        className={`pointer-events-none fixed inset-x-0 top-14 bottom-0 z-20 bg-black/30 transition-opacity duration-300 motion-reduce:transition-none ${
+          open ? "opacity-100" : "opacity-0"
+        }`}
+      />
       <aside
         aria-label={panel ? PANEL_TITLES[panel] : undefined}
         inert={!open}
         onKeyDown={(event) => {
           if (event.key === "Escape" && canClose) showPanel(null);
         }}
-        className={`fixed top-14 right-0 bottom-0 z-30 flex w-full max-w-[620px] flex-col border-l border-neutral-800 bg-[#0d1117] shadow-2xl transition-[translate,visibility] duration-200 motion-reduce:transition-none ${
-          open ? "translate-x-0" : "invisible translate-x-full"
+        className={`fixed top-14 bottom-0 left-0 z-30 flex w-full max-w-[620px] flex-col border-r-2 border-[#1f6feb] bg-[#0d1117] shadow-[12px_0_40px_rgba(0,0,0,.7)] transition-[translate,visibility] duration-300 ease-out motion-reduce:transition-none ${
+          open ? "translate-x-0" : "invisible -translate-x-full"
         }`}
       >
-        <div className="flex items-center gap-2 border-b border-neutral-800 px-5 py-3">
+        <div className="flex items-center gap-2 border-b border-neutral-800 bg-neutral-900 px-5 py-3">
           <h2 ref={heading} tabIndex={-1} className="mr-auto text-lg font-semibold outline-none">
             {panel && PANEL_TITLES[panel]}
           </h2>
@@ -61,7 +67,7 @@ export default function PanelDrawer({
               className="rounded-md px-2 py-1 text-sm text-neutral-300 hover:bg-neutral-800"
               onClick={() => setPanelHidden(panel, true)}
             >
-              Hide<span aria-hidden="true"> →</span>
+              <span aria-hidden="true">← </span>Hide
             </button>
           )}
           {canClose && (
@@ -83,9 +89,8 @@ export default function PanelDrawer({
         <button
           type="button"
           onClick={() => setPanelHidden(panel, false)}
-          className="fixed top-20 right-0 z-30 rounded-l-md border border-r-0 border-[#1f6feb] bg-neutral-900 px-3 py-2 text-sm font-medium text-neutral-100 shadow-lg hover:bg-neutral-800"
+          className="fixed top-1/2 left-0 z-30 -translate-y-1/2 rotate-180 rounded-l-md border border-r-0 flex w-9 items-center justify-center border-[#1f6feb] bg-neutral-900 py-4 text-sm font-semibold text-neutral-100 shadow-lg [writing-mode:vertical-rl] hover:bg-neutral-800"
         >
-          <span aria-hidden="true">← </span>
           {PANEL_TITLES[panel]}
         </button>
       )}

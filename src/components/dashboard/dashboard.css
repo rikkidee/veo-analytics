@@ -77,5 +77,6 @@ body[data-dashboard] {
 
 /* With room for both, an open tool sits beside the stats rather than covering them. */
 @media (min-width: 1280px) {
-  .veo-dash[data-beside-panel] { padding-right: 620px; }
+  .veo-dash { transition: padding-left .3s ease-out; }
+  .veo-dash[data-beside-panel] { padding-left: 620px; }
 }
