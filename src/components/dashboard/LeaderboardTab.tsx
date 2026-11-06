@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { KM_PER_MILE, type TeamModel } from "@/lib/dashboard";
-import Chart, { SERIES_COLORS, type ChartConfig } from "./Chart";
+import Chart, { easyHover, SERIES_COLORS, type ChartConfig } from "./Chart";
 import { MinutesNotice } from "./parts";
 
 const STATS: [string, string][] = [
@@ -73,6 +73,8 @@ export default function LeaderboardTab({ team }: { team: TeamModel }) {
       options: {
         indexAxis: "y",
         responsive: true,
+        // Bars run sideways, so the row is found by height.
+        ...easyHover("y"),
         plugins: { legend: { display: false } },
         scales: {
           x: { ticks: { color: "#8b949e" }, grid: { color: "#21262d" }, beginAtZero: true },

@@ -44,8 +44,15 @@ export const SERIES_COLORS = [
   "#ff7b72", "#79c0ff", "#56d364", "#db61a2", "#e3b341", "#bc8cff", "#7ee787",
 ];
 
+// Tooltips appear near a data point rather than only exactly on it.
+export const easyHover = (axis: "x" | "y" | "xy") => ({
+  interaction: { mode: "nearest" as const, intersect: false, axis },
+  elements: { point: { hitRadius: 20, hoverRadius: 8 } },
+});
+
 export const baseOptions = {
   responsive: true,
+  ...easyHover("x"),
   plugins: { legend: { labels: { color: "#c9d1d9" } } },
   scales: {
     x: { ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },

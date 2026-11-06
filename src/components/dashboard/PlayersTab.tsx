@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { comparisonPlayers, KM_PER_MILE, type TeamModel } from "@/lib/dashboard";
-import Chart, { baseOptions, type ChartConfig } from "./Chart";
+import Chart, { baseOptions, easyHover, type ChartConfig } from "./Chart";
 import { MinutesNotice, StatCard } from "./parts";
 import type { SavedReport } from "./reports";
 import ScoutingReport from "./ScoutingReport";
@@ -127,6 +127,8 @@ export default function PlayersTab({
       },
       options: {
         responsive: true,
+        // Spokes point every way, so "x" alone would pick the wrong one.
+        ...easyHover("xy"),
         scales: {
           r: {
             grid: { color: "#30363d" },
