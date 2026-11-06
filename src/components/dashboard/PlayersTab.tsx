@@ -121,7 +121,7 @@ export default function PlayersTab({
     return {
       type: "radar",
       data: {
-        labels: RADAR_AXES.map(({ label, unit }) => (unit === "/60" ? `${label}/60` : label)),
+        labels: RADAR_AXES.map(({ label }) => label),
         datasets: [
           {
             label: player.name,
@@ -207,6 +207,10 @@ export default function PlayersTab({
           unmatched.
         </p>
       )}
+      <div style={{ marginTop: 16 }}>
+        <ScoutingReport key={player.id} player={player} autoReport={reports[player.id]} />
+      </div>
+
       <div className="toggle-row" style={{ marginTop: 16 }}>
         <span className="muted">View:</span>
         {MODES.map(([value, label]) => (
@@ -224,8 +228,6 @@ export default function PlayersTab({
 
       {mode === "per60" && <MinutesNotice team={team} />}
       {highTrackingGames.length > 0 && <HighTrackingNotice games={highTrackingGames} />}
-
-      <ScoutingReport key={player.id} player={player} autoReport={reports[player.id]} />
 
       <div className="grid">
         <StatCard value={player.gamesPlayed} label="Games" />
