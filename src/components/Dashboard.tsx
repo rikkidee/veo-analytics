@@ -8,7 +8,14 @@ import TeamOverview from "@/components/TeamOverview";
 import { summarizeTeam, type DashboardData } from "@/lib/stats";
 
 export default function Dashboard({ data }: { data: DashboardData }) {
-  const [teamId, setTeamId] = useState(data.teams[0]?.id ?? "");
+  const [chosenTeamId, setChosenTeamId] = useState<string | null>(null);
+  // Teams arrive newest first, and the newest can be empty, as saving a roster
+  // always adds a team. Open on the newest one with games until someone chooses.
+  const teamId =
+    chosenTeamId ??
+    (data.teams.find((team) => data.games.some((game) => game.team_id === team.id)) ?? data.teams[0])
+      ?.id ??
+    "";
   const summary = useMemo(() => summarizeTeam(data, teamId), [data, teamId]);
 
   return (
@@ -19,14 +26,18 @@ export default function Dashboard({ data }: { data: DashboardData }) {
           <select
             aria-label="Team"
             value={teamId}
-            onChange={(event) => setTeamId(event.target.value)}
+            onChange={(event) => setChosenTeamId(event.target.value)}
             className="rounded-md border border-neutral-300 bg-transparent p-2 text-sm dark:border-neutral-700"
           >
-            {data.teams.map((team) => (
-              <option key={team.id} value={team.id}>
-                {team.name}
-              </option>
-            ))}
+            {data.teams.map((team) => {
+              // The count tells apart teams that share a name.
+              const count = data.games.filter((game) => game.team_id === team.id).length;
+              return (
+                <option key={team.id} value={team.id}>
+                  {team.name} ({count} {count === 1 ? "game" : "games"})
+                </option>
+              );
+            })}
           </select>
         )}
       </div>
