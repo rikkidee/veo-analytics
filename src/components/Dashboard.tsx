@@ -1,14 +1,55 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import Leaderboard from "@/components/Leaderboard";
-import PlayerProfile from "@/components/PlayerProfile";
-import TeamOverview from "@/components/TeamOverview";
-import { summarizeTeam, type DashboardData } from "@/lib/stats";
+import Script from "next/script";
+import { useLayoutEffect, useMemo, useState } from "react";
+import { CHART_JS_URL, ChartReady } from "@/components/dashboard/Chart";
+import GameLogTab from "@/components/dashboard/GameLogTab";
+import LeaderboardTab from "@/components/dashboard/LeaderboardTab";
+import { RichText } from "@/components/dashboard/parts";
+import PlayersTab from "@/components/dashboard/PlayersTab";
+import TeamTab from "@/components/dashboard/TeamTab";
+import "@/components/dashboard/dashboard.css";
+import { buildTeamModel, type TeamModel } from "@/lib/dashboard";
+import type { DashboardData } from "@/lib/stats";
+
+const TABS = [
+  ["team", "Team Overview"],
+  ["players", "Player Profiles"],
+  ["leaderboard", "Leaderboards"],
+  ["gamelog", "Game Log"],
+  ["analysis", "Analysis"],
+] as const;
+type Tab = (typeof TABS)[number][0];
+
+// All tabs stay mounted and only hide, so each keeps its selections when switching.
+function TeamContent({ team, tab }: { team: TeamModel; tab: Tab }) {
+  const panel = (name: Tab) => (tab === name ? undefined : "hidden");
+  return (
+    <>
+      <div className={panel("team")}><TeamTab team={team} /></div>
+      <div className={panel("players")}><PlayersTab team={team} /></div>
+      <div className={panel("leaderboard")}><LeaderboardTab team={team} /></div>
+      <div className={panel("gamelog")}><GameLogTab team={team} /></div>
+      <div className={panel("analysis")}>
+        {team.analysis ? (
+          <RichText html={team.analysis} />
+        ) : (
+          <p className="muted" style={{ marginTop: 32 }}>
+            No analysis has been written for this team yet.
+          </p>
+        )}
+      </div>
+    </>
+  );
+}
 
 export default function Dashboard({ data }: { data: DashboardData }) {
   const [chosenTeamId, setChosenTeamId] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>("team");
+  const [chartReady, setChartReady] = useState(false);
+  const [chartFailed, setChartFailed] = useState(false);
+
   // Teams arrive newest first, and the newest can be empty, as saving a roster
   // always adds a team. Open on the newest one with games until someone chooses.
   const teamId =
@@ -16,18 +57,37 @@ export default function Dashboard({ data }: { data: DashboardData }) {
     (data.teams.find((team) => data.games.some((game) => game.team_id === team.id)) ?? data.teams[0])
       ?.id ??
     "";
-  const summary = useMemo(() => summarizeTeam(data, teamId), [data, teamId]);
+  const currentTeam = data.teams.find((team) => team.id === teamId);
+  const model = useMemo(() => buildTeamModel(data, teamId), [data, teamId]);
+
+  // Next keeps visited pages mounted but hidden, and this cleanup runs when hidden,
+  // so the dark page background doesn't follow the user to other pages.
+  useLayoutEffect(() => {
+    document.body.dataset.dashboard = "";
+    return () => {
+      delete document.body.dataset.dashboard;
+    };
+  }, []);
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold">Dashboard</h1>
+    <div className="veo-dash">
+      <Script
+        src={CHART_JS_URL}
+        onReady={() => setChartReady(true)}
+        onError={() => setChartFailed(true)}
+      />
+      <div className="header">
+        {currentTeam?.logo_url && (
+          // Logos are saved by users and can be from anywhere, so next/image can't be configured for them.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={currentTeam.logo_url} alt="" />
+        )}
+        <h1>{currentTeam?.name}</h1>
         {data.teams.length > 1 && (
           <select
             aria-label="Team"
             value={teamId}
             onChange={(event) => setChosenTeamId(event.target.value)}
-            className="rounded-md border border-neutral-300 bg-transparent p-2 text-sm dark:border-neutral-700"
           >
             {data.teams.map((team) => {
               // The count tells apart teams that share a name.
@@ -42,22 +102,36 @@ export default function Dashboard({ data }: { data: DashboardData }) {
         )}
       </div>
 
-      {summary.games.length === 0 ? (
-        <p>
-          No games yet.{" "}
-          <Link
-            href="/onboarding/games"
-            className="font-medium text-emerald-700 underline dark:text-emerald-400"
-          >
-            Import your first games
-          </Link>
-        </p>
+      {model.games.length === 0 ? (
+        <div className="container">
+          <p style={{ marginTop: 32 }}>
+            No games yet. <Link href="/onboarding/games">Import your first games</Link>
+          </p>
+        </div>
       ) : (
         <>
-          <TeamOverview key={`overview-${teamId}`} summary={summary} />
-          <div className="grid gap-6 md:grid-cols-2">
-            <Leaderboard key={`leaderboard-${teamId}`} summary={summary} />
-            <PlayerProfile key={`profile-${teamId}`} summary={summary} />
+          <div className="nav">
+            {TABS.map(([name, label]) => (
+              <button
+                key={name}
+                type="button"
+                className={tab === name ? "active" : undefined}
+                aria-pressed={tab === name}
+                onClick={() => setTab(name)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="container">
+            {chartFailed && (
+              <p role="alert" className="chart-error">
+                The charts couldn&apos;t load. Check your connection and refresh the page.
+              </p>
+            )}
+            <ChartReady value={chartReady}>
+              <TeamContent key={teamId} team={model} tab={tab} />
+            </ChartReady>
           </div>
         </>
       )}

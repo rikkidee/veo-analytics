@@ -5,6 +5,8 @@ CREATE TABLE teams (
   club TEXT,
   age_group TEXT,
   logo_url TEXT,
+  -- The dashboard's Analysis tab.
+  analysis TEXT,
   created_by UUID REFERENCES auth.users(id),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -18,6 +20,9 @@ CREATE TABLE players (
   position TEXT,
   nickname TEXT,
   scouting_report TEXT,
+  -- Shown on the dashboard's player profile.
+  strengths TEXT,
+  areas_to_develop TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

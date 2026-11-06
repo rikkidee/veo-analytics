@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
-import Dashboard from "@/components/Dashboard";
+import DashboardLoader from "@/components/DashboardLoader";
 import type {
   DashboardCorrection,
   DashboardData,
@@ -35,10 +35,11 @@ async function loadDashboardData(): Promise<DashboardData> {
   const supabase = await createClient();
   const [teams, players, games, stats, corrections] = await Promise.all([
     fetchAll<DashboardTeam>((from, to) =>
-      supabase.from("teams").select("id, name").order("created_at", { ascending: false }).range(from, to),
+      // "*" so the page still works if the optional content columns haven't been added yet.
+      supabase.from("teams").select("*").order("created_at", { ascending: false }).range(from, to),
     ),
     fetchAll<DashboardPlayer>((from, to) =>
-      supabase.from("players").select("id, team_id, name, default_jersey, position").order("id").range(from, to),
+      supabase.from("players").select("*").order("id").range(from, to),
     ),
     fetchAll<DashboardGame>((from, to) =>
       supabase.from("games").select("id, team_id, game_label, game_date, opponent, team_stats").order("id").range(from, to),
@@ -77,7 +78,7 @@ async function SignedInDashboard() {
       </p>
     );
   }
-  return <Dashboard data={data} />;
+  return <DashboardLoader data={data} />;
 }
 
 export default function DashboardPage() {
