@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
-import { comparisonPlayers, KM_PER_MILE, type PlayerModel, type TeamModel } from "@/lib/dashboard";
+import { cleanNickname, comparisonPlayers, KM_PER_MILE, type PlayerModel, type TeamModel } from "@/lib/dashboard";
 
 const ReportSchema = z.object({
   nickname: z.string(),
@@ -20,7 +20,7 @@ const COMPARED_STATS = [
 const SYSTEM_PROMPT = `You write short scouting reports for a youth soccer coach's season dashboard. The players are children, around 12 and 13 years old. The coach reads these to decide how to develop each player and use them on the field.
 
 Each report has four parts:
-- nickname: two or three words starting with "The", capturing how this player plays. It should be something a kid would be proud of.
+- nickname: two or three words starting with "The", capturing how this player plays. It should be something a kid would be proud of. It has to be different from every name in nicknames_used_by_teammates, and from the nicknames in the examples below.
 - blurb: one punchy line, under 20 words, that sums up the player.
 - strengths: two to four short sentences. Lead with the numbers that actually stand out, written like "5.0 interceptions/60 (2nd on team)".
 - develop: two to three short sentences on what to work on next, specific enough to act on in training.
@@ -43,9 +43,10 @@ Rules:
 - A stat that's low can be explained by position, so read the whole profile before calling something a weakness.
 - Be honest about what needs work, while keeping it constructive and about soccer. Never comment on bodies, appearance, personality flaws or anything off the field.
 - You aren't given the player's name, so don't use one. Write in fragments where you can and avoid pronouns, as in the examples.
+- The nickname appears once, in its own field, so don't repeat it in the blurb, strengths or develop.
 - Write plain text with no markdown or HTML.`;
 
-function describePlayer(player: PlayerModel, team: TeamModel, coachNotes: string) {
+function describePlayer(player: PlayerModel, team: TeamModel, coachNotes: string, takenNicknames: string[]) {
   const compared = comparisonPlayers(team.players);
   const stats = COMPARED_STATS.filter((stat) => compared.some((other) => stat in other.totals)).map((stat) => {
     const values = compared.map((other) => other.per60[stat] ?? 0);
@@ -76,6 +77,7 @@ function describePlayer(player: PlayerModel, team: TeamModel, coachNotes: string
       top_speed_kph: Math.round((player.totals["Top speed"] ?? 0) * KM_PER_MILE * 10) / 10,
       stats_per_60_minutes: stats,
       coach_notes: coachNotes || "None",
+      nicknames_used_by_teammates: takenNicknames,
     },
     null,
     2,
@@ -98,8 +100,18 @@ async function askClaude<Schema extends z.ZodType>(schema: Schema, system: strin
   return response.parsed_output as z.infer<Schema>;
 }
 
-export function generateScoutingReport(player: PlayerModel, team: TeamModel, coachNotes: string) {
-  return askClaude(ReportSchema, SYSTEM_PROMPT, describePlayer(player, team, coachNotes));
+const sameNickname = (a: string | null, b: string) => a?.toLowerCase() === b.toLowerCase();
+
+/** Writes a report, trying once more if it comes back with a teammate's nickname. */
+export async function generateScoutingReport(player: PlayerModel, team: TeamModel, coachNotes: string) {
+  const taken = team.players.flatMap((other) => (other.id !== player.id && other.nickname ? [other.nickname] : []));
+  const ask = (nicknames: string[]) =>
+    askClaude(ReportSchema, SYSTEM_PROMPT, describePlayer(player, team, coachNotes, nicknames));
+
+  const report = await ask(taken);
+  const nickname = cleanNickname(report.nickname);
+  const clashes = taken.some((other) => sameNickname(nickname, other));
+  return clashes ? ask(taken) : report;
 }
 
 /** Turns a failed generation into the response to send, or null if it's not one we expect. */
@@ -118,7 +130,7 @@ const escapeHtml = (text: string) =>
 /** The fields as saved on a player. Saved text is shown as formatted text, so it's escaped here. */
 export function reportColumns(report: ScoutingReport, coachNotes: string) {
   return {
-    nickname: report.nickname.trim(),
+    nickname: cleanNickname(report.nickname),
     scouting_report: `<strong>${escapeHtml(report.blurb.trim())}</strong>`,
     strengths: escapeHtml(report.strengths.trim()),
     areas_to_develop: escapeHtml(report.develop.trim()),

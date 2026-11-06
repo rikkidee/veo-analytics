@@ -130,6 +130,12 @@ export function comparisonPlayers(players: PlayerModel[]) {
   return regulars.length > 0 ? regulars : players;
 }
 
+/** Tidies a nickname: "\"The Motor\"" or "The Motor The Motor" becomes "The Motor". */
+export function cleanNickname(nickname: string | null | undefined) {
+  const unquoted = (nickname ?? "").trim().replace(/^["'“”‘’]+|["'“”‘’]+$/g, "").trim();
+  return unquoted.replace(/^(.+?)(?:\s*[-–—,:]\s*|\s+)\1$/i, "$1") || null;
+}
+
 const round1 = (value: number) => Math.round(value * 10) / 10;
 
 function readLine(cells: Record<string, CellValue>): StatValues {
@@ -260,7 +266,7 @@ function buildPlayer(
     id: player.id,
     name: player.name,
     jersey: player.default_jersey,
-    nickname: player.nickname ?? null,
+    nickname: cleanNickname(player.nickname),
     report: player.scouting_report ?? null,
     strengths: player.strengths ?? null,
     develop: player.areas_to_develop ?? null,
