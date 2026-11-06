@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useEffectEvent, useRef, useState, type FormEvent } from "react";
+import { useEffect, useEffectEvent, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { describeSaveError, saveGame, type SaveGameInput } from "@/lib/games";
 import type { GamePreview } from "@/lib/stats";
 import { getSupabase } from "@/lib/supabase/client";
@@ -10,11 +10,13 @@ import {
   creditsForMatchedEvents,
   detectedJerseys,
   eventVideoUrl,
+  goalsForMapping,
   matchVideoUrl,
   minutesByJersey,
   NOISE,
   type RosterPlayer,
   type VeoGame,
+  type VeoKeyEvent,
   type VeoPayload,
 } from "@/lib/veo";
 
@@ -42,6 +44,8 @@ type MappingStepProps = {
   saved: { choices: Record<number, string>; eventChoices: Record<number, string> };
   /** Each player's saved minutes, by game. */
   seasonMinutes: Record<string, Record<string, number>>;
+  /** Shown below the game's details. */
+  intro: ReactNode;
   /** Called as soon as anything changes, ahead of it being saved. */
   onPreview: (preview: MappingPreview) => void;
   onSaveState: (state: SaveState) => void;
@@ -78,6 +82,7 @@ export default function MappingStep({
   total,
   saved,
   seasonMinutes,
+  intro,
   onPreview,
   onSaveState,
   onSaved,
@@ -132,6 +137,10 @@ export default function MappingStep({
     .sort((a, b) => a.after - b.after);
   const mostMinutes = Math.max(...playerMinutes.map(({ after }) => after), 1);
   const { matched: matchedEvents, unassigned: events } = attributeEvents(payload, choices, roster);
+  const goals = goalsForMapping(payload, choices, roster);
+  const assignedByHand = goals.unassigned.filter(({ index }) => eventChoices[index]).length;
+  const goalsToAssign = goals.unassigned.length - assignedByHand + goals.waitingOnJersey.length;
+  const goalCount = goals.matched.length + goals.unassigned.length + goals.waitingOnJersey.length;
 
   function renderJerseyRow(jersey: number) {
     const id = `jersey-${jersey}`;
@@ -160,6 +169,47 @@ export default function MappingStep({
           <option value={NOISE}>Skip: opponent or not a player</option>
         </select>
       </li>
+    );
+  }
+
+  function renderGoalMoment(keyEvent: VeoKeyEvent, labelFor?: string) {
+    const time = keyEvent.time ? formatEventTime(keyEvent.time) : null;
+    const credit = (
+      <>
+        <span aria-hidden="true">— </span>
+        <span className="font-medium">Goal</span>
+        {keyEvent.player ? ` by ${keyEvent.player}` : keyEvent.jersey !== null ? ` by jersey #${keyEvent.jersey}` : ""}
+      </>
+    );
+    return (
+      <div className="flex flex-wrap items-baseline gap-x-2">
+        <span className="whitespace-nowrap font-mono text-lg font-semibold tabular-nums">
+          {time ? (
+            <>
+              <span aria-hidden="true">⏱ </span>
+              {time}
+            </>
+          ) : (
+            "–"
+          )}
+        </span>
+        {labelFor ? (
+          <label htmlFor={labelFor} className="text-sm">
+            {credit}
+          </label>
+        ) : (
+          <span className="text-sm">{credit}</span>
+        )}
+        <a
+          href={eventVideoUrl(payload.slug, keyEvent.time)}
+          target="_blank"
+          rel="noreferrer"
+          aria-label={`Watch in video: goal${time ? ` at ${time}` : ""}`}
+          className="whitespace-nowrap text-sm font-medium text-emerald-700 hover:underline dark:text-emerald-400"
+        >
+          Watch in video ↗
+        </a>
+      </div>
     );
   }
 
@@ -298,6 +348,8 @@ export default function MappingStep({
         </label>
       </fieldset>
 
+      {intro}
+
       {(payload.warnings.length > 0 || unreadRows > 0) && (
         <ul className="list-disc rounded-md border border-amber-300 bg-amber-50 p-3 pl-7 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
           {payload.warnings.map((warning) => (
@@ -349,6 +401,86 @@ export default function MappingStep({
             highlighted clips in the video. You&apos;ll quickly recognize who that player is.
           </p>
         </div>
+      </section>
+
+      {goalCount > 0 && (
+        <section className="flex flex-col gap-3">
+          <div>
+            <div className="flex flex-wrap items-baseline justify-between gap-x-4">
+              <h3 className="font-semibold">Unassigned goals</h3>
+              <p role="status" className="text-sm text-neutral-600 dark:text-neutral-400">
+                {goalCount - goalsToAssign} matched · {goalsToAssign} unassigned
+              </p>
+            </div>
+            {goals.unassigned.length + goals.waitingOnJersey.length > 0 ? (
+              <>
+                <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
+                  Veo sometimes can&apos;t tell who scored. Goals update as you assign jerseys below, so start there, then
+                  pick a player for anything left. Leave any that belong to the opponent as unassigned.
+                </p>
+                <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
+                  If a link doesn&apos;t jump to the moment, scrub to the time shown. The video may also include warm-up
+                  or halftime, so the moment can be later than the match minute.
+                </p>
+              </>
+            ) : (
+              <p className="mt-1 text-sm font-medium text-success">
+                <span aria-hidden="true">✓ </span>Every goal is matched to a player.
+              </p>
+            )}
+          </div>
+          {goals.waitingOnJersey.length + goals.unassigned.length > 0 && (
+            <ul className="flex flex-col gap-3">
+              {goals.waitingOnJersey.map(({ event: keyEvent, jersey }, position) => (
+                <li key={`waiting-${position}`}>
+                  {renderGoalMoment(keyEvent)}
+                  <label htmlFor={`jersey-${jersey}`} className="block cursor-pointer text-xs text-amber-400">
+                    Assign jersey #{jersey} below to credit this goal.
+                  </label>
+                </li>
+              ))}
+              {goals.unassigned.map(({ event: keyEvent, index }) => {
+                const id = `event-${index}`;
+                return (
+                  <li key={id} className="flex flex-wrap items-center gap-x-3 gap-y-1 sm:flex-nowrap">
+                    <div className="min-w-0 flex-1 basis-full sm:basis-0">
+                      {renderGoalMoment(keyEvent, id)}
+                      <p className="text-xs text-neutral-600 dark:text-neutral-400">{keyEvent.description}</p>
+                    </div>
+                    <select
+                      id={id}
+                      value={eventChoices[index] ?? ""}
+                      onChange={(event) =>
+                        setEventChoices((current) => ({ ...current, [index]: event.target.value }))
+                      }
+                      className={`${selectClass} basis-full sm:basis-0`}
+                    >
+                      <option value="">Leave unassigned</option>
+                      <PlayerOptions roster={roster} />
+                    </select>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {goals.matched.length > 0 && (
+            <ul className="flex flex-col gap-1 text-sm">
+              {goals.matched.map(({ event: keyEvent, playerId }, position) => {
+                const player = roster.find((other) => other.id === playerId);
+                return (
+                  <li key={`matched-${position}`} className="text-neutral-600 dark:text-neutral-400">
+                    <span aria-hidden="true" className="text-success">✓ </span>
+                    Goal{keyEvent.time ? ` at ${formatEventTime(keyEvent.time)}` : ""}: #{player?.default_jersey} {player?.name}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      )}
+
+      <section className="flex flex-col gap-3">
+        <h3 className="font-semibold">Jersey mapping</h3>
         <ul className="flex flex-col gap-2">{orderedJerseys.map(renderJerseyRow)}</ul>
       </section>
 
@@ -380,99 +512,6 @@ export default function MappingStep({
           ))}
         </ul>
       </section>
-
-      {matchedEvents.length > 0 && (
-        <details className="text-sm">
-          <summary className="cursor-pointer font-medium">
-            {matchedEvents.length} {matchedEvents.length === 1 ? "goal or shot" : "goals and shots"}{" "}
-            matched by name
-          </summary>
-          <p className="mt-2 text-neutral-600 dark:text-neutral-400">
-            Anything Veo&apos;s player table already counts won&apos;t be counted twice.
-          </p>
-          <ul className="mt-2 flex flex-col gap-1">
-            {matchedEvents.map(({ event: keyEvent, playerId }, position) => {
-              const player = roster.find((other) => other.id === playerId);
-              return (
-                <li key={position}>
-                  <span className="capitalize">{keyEvent.type}</span>
-                  {keyEvent.time ? ` at ${keyEvent.time}` : ""}: #{player?.default_jersey}{" "}
-                  {player?.name}
-                </li>
-              );
-            })}
-          </ul>
-        </details>
-      )}
-
-      {events.length > 0 && (
-        <section className="flex flex-col gap-3">
-          <div>
-            <h3 className="font-semibold">Unassigned goals and shots</h3>
-            <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
-              Veo tracks shots and goals during the match but sometimes can&apos;t identify which
-              player took them. Review the events below and assign them to the correct player from
-              your roster. Leave any that belong to the opponent as unassigned.
-            </p>
-            <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
-              If a link doesn&apos;t jump to the moment, scrub to the time shown. The video may also
-              include warm-up or halftime, so the moment can be later than the match minute.
-            </p>
-          </div>
-          <ul className="flex flex-col gap-3">
-            {events.map(({ event: keyEvent, index }) => {
-              const id = `event-${index}`;
-              const time = keyEvent.time ? formatEventTime(keyEvent.time) : null;
-              return (
-                <li key={id} className="flex flex-wrap items-center gap-x-3 gap-y-1 sm:flex-nowrap">
-                  <div className="min-w-0 flex-1 basis-full sm:basis-0">
-                    <div className="flex flex-wrap items-baseline gap-x-2">
-                      <span className="whitespace-nowrap font-mono text-lg font-semibold tabular-nums">
-                        {time ? (
-                          <>
-                            <span aria-hidden="true">⏱ </span>
-                            {time}
-                          </>
-                        ) : (
-                          "–"
-                        )}
-                      </span>
-                      <label htmlFor={id} className="text-sm">
-                        <span aria-hidden="true">— </span>
-                        <span className="font-medium capitalize">{keyEvent.type}</span>
-                        {keyEvent.player ? ` by ${keyEvent.player}` : ""}
-                      </label>
-                      <a
-                        href={eventVideoUrl(payload.slug, keyEvent.time)}
-                        target="_blank"
-                        rel="noreferrer"
-                        aria-label={`Watch in video: ${keyEvent.type}${time ? ` at ${time}` : ""}`}
-                        className="whitespace-nowrap text-sm font-medium text-emerald-700 hover:underline dark:text-emerald-400"
-                      >
-                        Watch in video ↗
-                      </a>
-                    </div>
-                    <p className="text-xs text-neutral-600 dark:text-neutral-400">
-                      {keyEvent.description}
-                    </p>
-                  </div>
-                  <select
-                    id={id}
-                    value={eventChoices[index] ?? ""}
-                    onChange={(event) =>
-                      setEventChoices((current) => ({ ...current, [index]: event.target.value }))
-                    }
-                    className={`${selectClass} basis-full sm:basis-0`}
-                  >
-                    <option value="">Leave unassigned</option>
-                    <PlayerOptions roster={roster} />
-                  </select>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      )}
 
     </form>
   );

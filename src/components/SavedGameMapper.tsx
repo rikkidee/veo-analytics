@@ -19,7 +19,7 @@ type SavedGameMapperProps = {
   roster: RosterPlayer[];
   /** Each player's saved minutes, by game. */
   seasonMinutes: Record<string, Record<string, number>>;
-  /** Shown between the game selector and the game. */
+  /** Shown below the game's details. */
   intro: ReactNode;
   /** A change the dashboard can show ahead of it being saved. */
   onPreview: (gameId: string, preview: MappingPreview) => void;
@@ -111,8 +111,6 @@ export default function SavedGameMapper({ games, roster, seasonMinutes, intro, o
         </div>
       )}
 
-      {intro}
-
       {!current && <p className="text-sm text-neutral-600 dark:text-neutral-400">Loading game…</p>}
       {current?.error && (
         <p role="alert" className="text-sm text-red-700 dark:text-red-400">
@@ -150,6 +148,7 @@ export default function SavedGameMapper({ games, roster, seasonMinutes, intro, o
           total={games.length}
           seasonMinutes={seasonMinutes}
           saved={{ choices: current.game.choices, eventChoices: current.game.eventChoices }}
+          intro={intro}
           onPreview={(preview) => onPreview(currentId, preview)}
           onSaveState={setSaveState}
           onSaved={(version) => onSaved(currentId, version)}

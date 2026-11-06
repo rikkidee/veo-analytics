@@ -170,13 +170,12 @@ function findEventPlayer(
   if (choice === NOISE) return null;
   if (choice) return choice;
 
-  const matches = roster.filter((player) => normalizeName(player.name) === wanted);
-  return onePerson(matches);
+  return matchName(name, roster);
 }
 
 /**
  * Sorts events credited by name from those needing a person to decide. Events
- * carrying a jersey are in neither list, as the player table already covers them.
+ * carrying a jersey in the player table are in neither list, as it already covers them.
  * `index` is the event's position in the payload, which stays the same when a
  * jersey decision moves events between lists.
  */
@@ -185,15 +184,43 @@ export function attributeEvents(
   choices: Record<number, JerseyChoice>,
   roster: RosterPlayer[],
 ) {
+  const inTable = new Set(detectedJerseys(payload));
   const matched: { event: VeoKeyEvent; playerId: string }[] = [];
   const unassigned: { event: VeoKeyEvent; index: number }[] = [];
   payload.keyEvents.forEach((event, index) => {
-    if (event.jersey !== null) return;
+    if (event.jersey !== null && inTable.has(event.jersey)) return;
     const playerId = event.player ? findEventPlayer(event.player, payload, choices, roster) : null;
     if (playerId) matched.push({ event, playerId });
     else unassigned.push({ event, index });
   });
   return { matched, unassigned };
+}
+
+/**
+ * Where each goal stands, for showing on the mapping page. Goals carrying a jersey
+ * follow that jersey: mapping it credits them through the player table, so they only
+ * ever wait on the jersey. Anything else the mapping can't place needs a person.
+ */
+export function goalsForMapping(
+  payload: VeoPayload,
+  choices: Record<number, JerseyChoice>,
+  roster: RosterPlayer[],
+) {
+  const { matched, unassigned } = attributeEvents(payload, choices, roster);
+  const isGoal = ({ event }: { event: VeoKeyEvent }) => event.type === "goal";
+  const fromJersey = payload.keyEvents.flatMap((event) =>
+    event.type === "goal" && event.jersey !== null && event.jersey in choices ? [{ event, jersey: event.jersey }] : [],
+  );
+  return {
+    matched: [
+      ...matched.filter(isGoal),
+      ...fromJersey.flatMap(({ event, jersey }) =>
+        choices[jersey] && choices[jersey] !== NOISE ? [{ event, playerId: choices[jersey] }] : [],
+      ),
+    ],
+    waitingOnJersey: fromJersey.filter(({ jersey }) => !choices[jersey]),
+    unassigned: unassigned.filter(isGoal),
+  };
 }
 
 /**
