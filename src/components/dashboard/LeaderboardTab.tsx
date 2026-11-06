@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { KM_PER_MILE, type TeamModel } from "@/lib/dashboard";
 import Chart, { SERIES_COLORS, type ChartConfig } from "./Chart";
-import { NoMinutesNotice } from "./parts";
+import { MinutesNotice } from "./parts";
 
 const STATS: [string, string][] = [
   ["Goals", "Goals"], ["Passes successful", "Successful Passes"], ["Pass %", "Pass %"], ["Tackles", "Tackles"],
@@ -41,7 +41,9 @@ export default function LeaderboardTab({ team }: { team: TeamModel }) {
         } else {
           total = round1((player.totals[stat] ?? 0) * (IN_MILES.has(stat) ? KM_PER_MILE : 1));
         }
-        const per60 = NOT_PER_60.has(stat) ? total : minutes > 0 ? round1((total / minutes) * 60) : 0;
+        const per60 = NOT_PER_60.has(stat)
+          ? total
+          : round1((player.per60[stat] ?? 0) * (IN_MILES.has(stat) ? KM_PER_MILE : 1));
         return {
           id: player.id,
           name: player.name,
@@ -125,7 +127,7 @@ export default function LeaderboardTab({ team }: { team: TeamModel }) {
           <option value="per60">Per 60 Min</option>
         </select>
       </div>
-      {mode === "per60" && !team.hasMinutes && <NoMinutesNotice />}
+      {mode === "per60" && <MinutesNotice team={team} />}
       <div className="chart-container"><Chart config={chart} /></div>
       <div style={{ overflowX: "auto" }}>
         <table>

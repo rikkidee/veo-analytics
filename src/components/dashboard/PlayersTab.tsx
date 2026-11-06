@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { comparisonPlayers, KM_PER_MILE, type TeamModel } from "@/lib/dashboard";
 import Chart, { baseOptions, type ChartConfig } from "./Chart";
-import { NoMinutesNotice, StatCard } from "./parts";
+import { MinutesNotice, StatCard } from "./parts";
 import type { SavedReport } from "./reports";
 import ScoutingReport from "./ScoutingReport";
 
@@ -188,7 +188,7 @@ export default function PlayersTab({
         </button>
       </div>
 
-      {mode === "per60" && !team.hasMinutes && <NoMinutesNotice />}
+      {mode === "per60" && <MinutesNotice team={team} />}
 
       <ScoutingReport key={player.id} player={player} autoReport={reports[player.id]} />
 
@@ -242,6 +242,7 @@ export default function PlayersTab({
                     <td>{game.date}</td>
                     {LOG_COLUMNS.map(([column, stat]) => {
                       if (!line) return <td key={column}>—</td>;
+                      if (column === "Min" && line["Minutes tracked"] === undefined) return <td key={column}>—</td>;
                       const value = line[stat ?? ""] ?? 0;
                       if (column === "Pass %") return <td key={column}>{value}%</td>;
                       if (column === "Top Spd (kph)" || column === "KM") {

@@ -1,4 +1,4 @@
-import { combineStats, EVENT_COLUMNS, isMinutesColumn, toMinutes, type StatLine } from "@/lib/stats";
+import { combineStats, EVENT_COLUMNS, isMinutesColumn, isSamePerson, toMinutes, type StatLine } from "@/lib/stats";
 
 export type VeoPlayerRow = {
   jersey: number | null;
@@ -103,10 +103,16 @@ export function detectedJerseys(payload: VeoPayload): number[] {
   return [...new Set(jerseys)].sort((a, b) => a - b);
 }
 
+/** The player's id if these are all one person, however the name was capitalized. */
+function onePerson(matches: RosterPlayer[]) {
+  const asPerson = (player: RosterPlayer) => ({ name: player.name, jersey: player.default_jersey });
+  const allSame = matches.every((player) => isSamePerson(asPerson(player), asPerson(matches[0])));
+  return matches.length > 0 && allSame ? matches[0].id : null;
+}
+
 /** Suggests a player only when the jersey points to exactly one person. */
 export function suggestPlayer(jersey: number, roster: RosterPlayer[]): string {
-  const matches = roster.filter((player) => player.default_jersey === jersey);
-  return matches.length === 1 ? matches[0].id : "";
+  return onePerson(roster.filter((player) => player.default_jersey === jersey)) ?? "";
 }
 
 export type EventAssignment = { type: VeoKeyEvent["type"]; playerId: string };
@@ -132,7 +138,7 @@ function findEventPlayer(
   if (choice) return choice;
 
   const matches = roster.filter((player) => normalizeName(player.name) === wanted);
-  return matches.length === 1 ? matches[0].id : null;
+  return onePerson(matches);
 }
 
 /**

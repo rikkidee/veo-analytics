@@ -1,7 +1,8 @@
 import {
   EVENT_COLUMNS,
   isMinutesColumn,
-  toMinutes,
+  isSamePerson,
+  readStat,
   type CellValue,
   type DashboardData,
   type DashboardPlayer,
@@ -60,6 +61,8 @@ export type TeamModel = {
   players: PlayerModel[];
   /** False when no saved report had minutes, which per 60 stats depend on. */
   hasMinutes: boolean;
+  /** True when some of a team's saved rows have no minutes, so per 60 leaves them out. */
+  missingMinutes: boolean;
   analysis: string | null;
   /** Written by AI, where `analysis` is written by hand. */
   teamAnalysis: string | null;
@@ -112,33 +115,13 @@ export function comparisonPlayers(players: PlayerModel[]) {
 
 const round1 = (value: number) => Math.round(value * 10) / 10;
 
-/** Reads 6.8, "6.8", "1,204" or "6.8 mi". The scraper keeps anything with a unit as text. */
-function leadingNumber(value: CellValue) {
-  if (typeof value === "number") return value;
-  const match = value?.trim().match(/^-?\d[\d,]*(?:\.\d+)?/);
-  return match ? Number(match[0].replace(/,/g, "")) : null;
-}
-
-/** Distances and speeds are held in miles, as the Veo report shows them, unless marked metric. */
-function inMiles(value: CellValue) {
-  const number = leadingNumber(value);
-  if (number === null) return null;
-  return typeof value === "string" && /\bkm|\bkph\b/i.test(value) ? number / KM_PER_MILE : number;
-}
-
-function readCell(column: string, value: CellValue) {
-  if (column === "Minutes tracked") return toMinutes(value) ?? leadingNumber(value);
-  if (column === "Distance tracked" || column === "Top speed") return inMiles(value);
-  return leadingNumber(value);
-}
-
 function readLine(cells: Record<string, CellValue>): StatValues {
   const line: StatValues = {};
   for (const [header, value] of Object.entries(cells)) {
     const column = isMinutesColumn(header)
       ? "Minutes tracked"
       : PLAYER_COLUMNS.find(([, pattern]) => pattern.test(header.trim()))?.[0];
-    const number = column ? readCell(column, value) : null;
+    const number = column ? readStat(header, value) : null;
     if (column && number !== null) line[column] = number;
   }
   return line;
@@ -175,20 +158,28 @@ function shortLabel(team: DashboardTeam | undefined) {
   return initials.slice(0, 3) || "Team";
 }
 
+function addLine(line: StatValues, more: StatValues) {
+  for (const [column, value] of Object.entries(more)) {
+    line[column] = column === "Top speed" ? Math.max(line[column] ?? 0, value) : (line[column] ?? 0) + value;
+  }
+}
+
 function buildPlayer(
   player: DashboardPlayer,
+  ids: Set<string>,
   data: DashboardData,
   games: GameModel[],
 ): PlayerModel {
   const perGame = new Map<string, PlayerGame>();
   for (const game of games) {
-    const row = data.stats.find((stat) => stat.game_id === game.id && stat.player_id === player.id);
+    const rows = data.stats.filter((stat) => stat.game_id === game.id && ids.has(stat.player_id));
     const corrections = data.corrections.filter(
-      (correction) => correction.game_id === game.id && correction.player_id === player.id,
+      (correction) => correction.game_id === game.id && correction.player_id !== null && ids.has(correction.player_id),
     );
-    if (!row && corrections.length === 0) continue;
+    if (rows.length === 0 && corrections.length === 0) continue;
 
-    const line = readLine(row?.stats ?? {});
+    const line: StatValues = {};
+    for (const row of rows) addLine(line, readLine(row.stats));
     for (const correction of corrections) {
       const column = EVENT_COLUMNS[correction.event_type];
       if (column) line[column] = (line[column] ?? 0) + (correction.value ?? 1);
@@ -207,11 +198,20 @@ function buildPlayer(
     }
   }
 
-  const minutes = totals["Minutes tracked"] ?? 0;
+  // Only games with minutes count towards a rate. Otherwise a game whose minutes
+  // are missing adds its stats without its time, which inflates every per 60 number.
+  const timedTotals: StatValues = {};
+  for (const line of perGame.values()) {
+    if (!(line["Minutes tracked"] > 0)) continue;
+    for (const [column, value] of Object.entries(line)) {
+      if (column !== "Pass %" && column !== "Top speed") timedTotals[column] = (timedTotals[column] ?? 0) + value;
+    }
+  }
+  const minutes = timedTotals["Minutes tracked"] ?? 0;
   const per60 = Object.fromEntries(
-    Object.entries(totals).map(([column, value]) => [
+    Object.keys(totals).map((column) => [
       column,
-      column === "Top speed" ? value : minutes > 0 ? round1((value / minutes) * 60) : 0,
+      column === "Top speed" ? totals[column] : minutes > 0 ? round1((round1(timedTotals[column] ?? 0) / minutes) * 60) : 0,
     ]),
   );
 
@@ -231,6 +231,33 @@ function buildPlayer(
   };
 }
 
+/**
+ * Folds roster entries for one person, like "Celeste" and "celeste", into one player
+ * with all their stats. The capitalized spelling wins, and report fields fill any gaps.
+ */
+function mergeDuplicates(roster: DashboardPlayer[]) {
+  const isLowercase = (player: DashboardPlayer) => player.name === player.name.toLowerCase();
+  const merged: { player: DashboardPlayer; ids: Set<string> }[] = [];
+  for (const entry of roster.toSorted((a, b) => Number(isLowercase(a)) - Number(isLowercase(b)))) {
+    const person = { name: entry.name, jersey: entry.default_jersey };
+    const existing = merged.find(({ player }) => isSamePerson({ name: player.name, jersey: player.default_jersey }, person));
+    if (existing) {
+      existing.ids.add(entry.id);
+      existing.player = {
+        ...existing.player,
+        nickname: existing.player.nickname ?? entry.nickname,
+        scouting_report: existing.player.scouting_report ?? entry.scouting_report,
+        strengths: existing.player.strengths ?? entry.strengths,
+        areas_to_develop: existing.player.areas_to_develop ?? entry.areas_to_develop,
+        coach_notes: existing.player.coach_notes ?? entry.coach_notes,
+      };
+    } else {
+      merged.push({ player: entry, ids: new Set([entry.id]) });
+    }
+  }
+  return merged;
+}
+
 /** Puts one team's saved rows into the shape the dashboard's tabs read. */
 export function buildTeamModel(data: DashboardData, teamId: string): TeamModel {
   const team = data.teams.find((other) => other.id === teamId);
@@ -244,9 +271,8 @@ export function buildTeamModel(data: DashboardData, teamId: string): TeamModel {
       stats: readTeamStats(game.team_stats),
     }));
 
-  const players = data.players
-    .filter((player) => player.team_id === teamId)
-    .map((player) => buildPlayer(player, data, games))
+  const players = mergeDuplicates(data.players.filter((player) => player.team_id === teamId))
+    .map(({ player, ids }) => buildPlayer(player, ids, data, games))
     .filter((player) => player.gamesPlayed > 0)
     .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -256,6 +282,9 @@ export function buildTeamModel(data: DashboardData, teamId: string): TeamModel {
     games,
     players,
     hasMinutes: players.some((player) => (player.totals["Minutes tracked"] ?? 0) > 0),
+    missingMinutes: players.some((player) =>
+      [...player.perGame.values()].some((line) => line["Minutes tracked"] === undefined),
+    ),
     analysis: team?.analysis ?? null,
     teamAnalysis: team?.team_analysis ?? null,
   };

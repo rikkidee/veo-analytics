@@ -39,6 +39,38 @@ export function toMinutes(value: CellValue): number | null {
   return hours ? Number(hours[1]) * 60 + Number(hours[2] ?? 0) : null;
 }
 
+/** Reads 6.8, "6.8", "1,204" or "6.8 mi". The scraper keeps anything with a unit as text. */
+function leadingNumber(value: CellValue) {
+  if (typeof value === "number") return value;
+  const match = value?.trim().match(/^-?\d[\d,]*(?:\.\d+)?/);
+  return match ? Number(match[0].replace(/,/g, "")) : null;
+}
+
+const KM_PER_MILE = 1.60934;
+
+/**
+ * A cell as a number, or null when it isn't one. Minutes come out in minutes, and
+ * distances and speeds in miles, as Veo's reports show them, unless marked metric.
+ */
+export function readStat(column: string, value: CellValue) {
+  if (isMinutesColumn(column)) return toMinutes(value) ?? leadingNumber(value);
+  const number = leadingNumber(value);
+  if (number === null) return null;
+  const metric = /^(distance|top speed)/i.test(column.trim()) && typeof value === "string" && /\bkm|\bkph\b/i.test(value);
+  return metric ? number / KM_PER_MILE : number;
+}
+
+const normalizeName = (name: string) => name.replace(/\s+/g, " ").trim().toLowerCase();
+
+/** Roster entries for one person. Identical names on different jerseys are two people. */
+export function isSamePerson(
+  a: { name: string; jersey: number },
+  b: { name: string; jersey: number },
+) {
+  if (normalizeName(a.name) !== normalizeName(b.name)) return false;
+  return a.name.trim() !== b.name.trim() || a.jersey === b.jersey;
+}
+
 function mean(values: number[]) {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
@@ -54,8 +86,8 @@ export function combineStats(lines: StatLine[]): Record<string, number> {
   for (const line of lines) {
     for (const [column, raw] of Object.entries(line)) {
       if (isIdentityColumn(column)) continue;
-      const value = isMinutesColumn(column) ? toMinutes(raw) : raw;
-      if (typeof value !== "number") continue;
+      const value = readStat(column, raw);
+      if (value === null) continue;
       const values = valuesByColumn.get(column) ?? [];
       values.push(value);
       valuesByColumn.set(column, values);

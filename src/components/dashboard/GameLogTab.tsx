@@ -17,8 +17,8 @@ export default function GameLogTab({ team }: { team: TeamModel }) {
   const gamePlayers = players
     .flatMap((player) => {
       const line = player.perGame.get(game.label);
-      // Rows without minutes are only dropped when minutes exist to tell who played.
-      return line && (!team.hasMinutes || (line["Minutes tracked"] ?? 0) > 0) ? [{ player, line }] : [];
+      // A row of 0 minutes means they didn't play. A row with no minutes still has real stats.
+      return line && line["Minutes tracked"] !== 0 ? [{ player, line }] : [];
     })
     .sort((a, b) => (b.line["Minutes tracked"] ?? 0) - (a.line["Minutes tracked"] ?? 0));
 
@@ -63,7 +63,7 @@ export default function GameLogTab({ team }: { team: TeamModel }) {
               {gamePlayers.map(({ player, line }) => (
                 <tr key={player.id}>
                   <td><strong>#{player.jersey} {player.name}</strong></td>
-                  <td>{line["Minutes tracked"] ?? 0}</td>
+                  <td>{line["Minutes tracked"] ?? "—"}</td>
                   <td>{line.Goals ?? 0}</td>
                   <td>{line.Shots ?? 0}</td>
                   <td>{line["Passes successful"] ?? 0}</td>

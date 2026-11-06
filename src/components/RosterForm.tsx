@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { isSamePerson } from "@/lib/stats";
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase/client";
 
 function describeSaveError(cause: unknown) {
@@ -169,6 +170,16 @@ export default function RosterForm() {
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setError(null);
+
+    const entries = players.map((player) => ({ name: player.name, jersey: Number(player.jersey) }));
+    const repeated = entries.find((entry, index) =>
+      entries.slice(0, index).some((other) => isSamePerson(other, entry)),
+    );
+    if (repeated) {
+      setError(`"${repeated.name.trim()}" is on this roster twice. Remove one of them, then click Save Team.`);
+      return;
+    }
+
     setSaving(true);
     try {
       const supabase = getSupabase();

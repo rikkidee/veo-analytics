@@ -1,4 +1,5 @@
 import { createElement, type CSSProperties, type ReactNode } from "react";
+import type { TeamModel } from "@/lib/dashboard";
 
 export function StatCard({
   value,
@@ -21,11 +22,14 @@ export function StatCard({
   );
 }
 
-/** Shown with per 60 stats, which would otherwise read as all zeros with no explanation. */
-export function NoMinutesNotice() {
+/** Shown with per 60 stats, as otherwise they'd be zeros or lower than expected with no explanation. */
+export function MinutesNotice({ team }: { team: TeamModel }) {
+  if (team.hasMinutes && !team.missingMinutes) return null;
   return (
     <p role="status" className="chart-error">
-      Per 60 needs minutes, and these games were saved without any. Import them again to fill them in.
+      {team.hasMinutes
+        ? "Some saved games have no minutes for some players, so per 60 leaves those games out for them. Import those games again to fill them in."
+        : "Per 60 needs minutes, and these games were saved without any. Import them again to fill them in."}
     </p>
   );
 }
