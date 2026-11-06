@@ -8,6 +8,7 @@ import {
   attributeEvents,
   creditsForMatchedEvents,
   detectedJerseys,
+  eventVideoUrl,
   matchVideoUrl,
   minutesByJersey,
   NOISE,
@@ -42,8 +43,8 @@ function formatGameDate(date: string) {
     : new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeZone: "UTC" }).format(parsed);
 }
 
-// Veo shows match minutes as 15', which the scraper stores as "15".
-const formatEventTime = (time: string) => (/^\d+$/.test(time) ? `${time}'` : time);
+// Veo shows match minutes as 15' or 45+2', which the scraper stores as "15" or "45+2".
+const formatEventTime = (time: string) => (time.includes(":") ? time : `${time}'`);
 
 function PlayerOptions({ roster }: { roster: RosterPlayer[] }) {
   return roster.map((player) => (
@@ -291,33 +292,47 @@ export default function MappingStep({
               your roster. Leave any that belong to the opponent as unassigned.
             </p>
             <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
-              Each link opens the match video, where you can scrub to the time shown. The video may
-              also include warm-up or halftime, so the moment can be later than the match minute.
+              If a link doesn&apos;t jump to the moment, scrub to the time shown. The video may also
+              include warm-up or halftime, so the moment can be later than the match minute.
             </p>
           </div>
           <ul className="flex flex-col gap-3">
             {events.map(({ event: keyEvent, index }) => {
               const id = `event-${index}`;
+              const time = keyEvent.time ? formatEventTime(keyEvent.time) : null;
               return (
                 <li key={id} className="flex flex-wrap items-center gap-x-3 gap-y-1 sm:flex-nowrap">
-                  <span className="w-12 shrink-0 font-mono text-lg font-semibold tabular-nums">
-                    {keyEvent.time ? formatEventTime(keyEvent.time) : "–"}
-                  </span>
-                  <label htmlFor={id} className="min-w-0 flex-1 text-sm">
-                    <span className="font-medium capitalize">{keyEvent.type}</span>
-                    <span className="block text-xs text-neutral-600 dark:text-neutral-400">
+                  <div className="min-w-0 flex-1 basis-full sm:basis-0">
+                    <div className="flex flex-wrap items-baseline gap-x-2">
+                      <span className="whitespace-nowrap font-mono text-lg font-semibold tabular-nums">
+                        {time ? (
+                          <>
+                            <span aria-hidden="true">⏱ </span>
+                            {time}
+                          </>
+                        ) : (
+                          "–"
+                        )}
+                      </span>
+                      <label htmlFor={id} className="text-sm">
+                        <span aria-hidden="true">— </span>
+                        <span className="font-medium capitalize">{keyEvent.type}</span>
+                        {keyEvent.player ? ` by ${keyEvent.player}` : ""}
+                      </label>
+                      <a
+                        href={eventVideoUrl(payload.slug, keyEvent.time)}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label={`Watch in video: ${keyEvent.type}${time ? ` at ${time}` : ""}`}
+                        className="whitespace-nowrap text-sm font-medium text-emerald-700 hover:underline dark:text-emerald-400"
+                      >
+                        Watch in video ↗
+                      </a>
+                    </div>
+                    <p className="text-xs text-neutral-600 dark:text-neutral-400">
                       {keyEvent.description}
-                    </span>
-                  </label>
-                  <a
-                    href={matchVideoUrl(payload.slug)}
-                    target="_blank"
-                    rel="noreferrer"
-                    aria-label={`Open the match video to find this ${keyEvent.type}${keyEvent.time ? ` at ${formatEventTime(keyEvent.time)}` : ""}`}
-                    className="shrink-0 text-sm font-medium text-emerald-700 hover:underline dark:text-emerald-400"
-                  >
-                    Video →
-                  </a>
+                    </p>
+                  </div>
                   <select
                     id={id}
                     value={eventChoices[index] ?? ""}

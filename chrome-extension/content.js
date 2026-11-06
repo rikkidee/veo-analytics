@@ -513,7 +513,11 @@
     else if (/\bshots?\b/.test(lower)) type = "shot";
     if (!type) return null;
 
-    const time = text.match(/\b(\d{1,3}:\d{2})\b/)?.[1] ?? text.match(/\b(\d{1,3})['’]/)?.[1] ?? null;
+    // "4'" gives "4", and stoppage time "45+2'" gives "45+2".
+    const time =
+      text.match(/\b(\d{1,3}:\d{2})\b/)?.[1] ??
+      text.match(/\b(\d{1,3}(?:\+\d{1,2})?)['’]/)?.[1] ??
+      null;
     const jersey = player ? undefined : text.match(/(?:#|\bno\.?\s*|\bnumber\s+)(\d{1,3})\b/i)?.[1];
     return {
       type,

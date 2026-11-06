@@ -66,6 +66,23 @@ export function matchVideoUrl(slug: string) {
   return `https://app.veo.co/matches/${slug}/`;
 }
 
+/** Reads an event time as Veo shows it: "4" (4'), "45+2" (45+2') or "12:30". */
+function eventSeconds(time: string | null) {
+  const clock = time?.match(/^(\d+):(\d{2})$/);
+  if (clock) return Number(clock[1]) * 60 + Number(clock[2]);
+  const minute = time?.match(/^(\d+)(?:\+(\d+))?$/);
+  return minute ? (Number(minute[1]) + Number(minute[2] ?? 0)) * 60 : null;
+}
+
+/**
+ * Links to an event's moment in the match video. Veo doesn't document a timestamp
+ * parameter, so `t` is unconfirmed; if Veo ignores it the video opens at the start.
+ */
+export function eventVideoUrl(slug: string, time: string | null) {
+  const seconds = eventSeconds(time);
+  return seconds === null ? matchVideoUrl(slug) : `${matchVideoUrl(slug)}?t=${seconds}`;
+}
+
 /** Minutes each jersey played. A jersey with no readable minutes is left out. */
 export function minutesByJersey(payload: VeoPayload) {
   const minutes = new Map<number, number>();
