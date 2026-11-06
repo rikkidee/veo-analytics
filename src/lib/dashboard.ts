@@ -5,6 +5,7 @@ import {
   readStat,
   type CellValue,
   type DashboardData,
+  type DashboardGame,
   type DashboardPlayer,
   type DashboardTeam,
 } from "@/lib/stats";
@@ -31,6 +32,7 @@ export type GameModel = {
   label: string;
   /** Like "Sep 13". */
   date: string;
+  opponent: string | null;
   stats: Record<TeamStatName, TeamStat>;
   /** False when the saved report has no team numbers, so only player totals fill in. */
   hasTeamStats: boolean;
@@ -153,14 +155,38 @@ function formatShortDate(date: string) {
  * The first number in a stat card is treated as this team's and the second as the
  * opponent's, since that's the order they're read from the report.
  */
-function readTeamStats(raw: Record<string, { values?: number[] }> | null) {
+function readTeamStats(raw: DashboardGame["team_stats"], swapped: boolean) {
   const entries = Object.entries(raw ?? {});
-  return Object.fromEntries(
+  const [ownIndex, oppIndex] = swapped ? [1, 0] : [0, 1];
+  const stats = Object.fromEntries(
     TEAM_STATS.map((stat) => {
       const values = entries.find(([label]) => TEAM_STAT_LABELS[stat].test(label.trim()))?.[1].values;
-      return [stat, { own: values?.[0] ?? null, opp: values?.[1] ?? null }];
+      return [stat, { own: values?.[ownIndex] ?? null, opp: values?.[oppIndex] ?? null }];
     }),
   ) as Record<TeamStatName, TeamStat>;
+
+  // The Goals card wins when there is one, as the header's score comes from scanning the page.
+  const score = raw?.Score?.values;
+  if (stats.Goals.own === null && stats.Goals.opp === null && score?.length === 2) {
+    stats.Goals = { own: score[ownIndex], opp: score[oppIndex] };
+  }
+  return stats;
+}
+
+const simplify = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/** Whether a name from a report's header is this team, by its name or club. */
+function namesThisTeam(headerName: string, team: DashboardTeam | undefined) {
+  const header = simplify(headerName);
+  return [team?.name, team?.club].some((name) => {
+    const own = simplify(name ?? "");
+    return own.length > 0 && header.length > 0 && (own.includes(header) || header.includes(own));
+  });
+}
+
+/** Stats are in page order, so this team comes second only when the header says so. */
+function isListedSecond(names: string[] | undefined, team: DashboardTeam | undefined) {
+  return Boolean(names && !namesThisTeam(names[0], team) && namesThisTeam(names[1], team));
 }
 
 /** "Mid-Isle Soccer Club" gives "MIS", falling back to "Team" when no club is set. */
@@ -298,13 +324,20 @@ export function buildTeamModel(data: DashboardData, teamId: string): TeamModel {
   const games = data.games
     .filter((game) => game.team_id === teamId)
     .sort((a, b) => a.game_date.localeCompare(b.game_date))
-    .map((game, index): GameModel => ({
-      id: game.id,
-      label: `G${index + 1}`,
-      date: formatShortDate(game.game_date),
-      stats: readTeamStats(game.team_stats),
-      hasTeamStats: Object.values(game.team_stats ?? {}).some((card) => (card.values?.length ?? 0) >= 2),
-    }));
+    .map((game, index): GameModel => {
+      const names = game.team_stats?.Score?.teams;
+      const swapped = isListedSecond(names, team);
+      return {
+        id: game.id,
+        label: `G${index + 1}`,
+        date: formatShortDate(game.game_date),
+        opponent: game.opponent ?? names?.[swapped ? 0 : 1] ?? null,
+        stats: readTeamStats(game.team_stats, swapped),
+        hasTeamStats: Object.entries(game.team_stats ?? {}).some(
+          ([label, card]) => label !== "Score" && (card.values?.length ?? 0) >= 2,
+        ),
+      };
+    });
 
   const players = mergeDuplicates(data.players.filter((player) => player.team_id === teamId))
     .map(({ player, ids }) => buildPlayer(player, ids, data, games))

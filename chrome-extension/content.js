@@ -452,6 +452,30 @@
 
   // The player cell holds a button reading "Deanna Motley#12", or "3Jersey #3–" for
   // a player with no Veo profile, then a <wa-popover> of stats that must not be read.
+  // The report's header reads like "REP U12/13 Girls 1-1 CVUSC1". Headings are tried
+  // first, then any short text outside the stats table.
+  const SCORE_PATTERN = /^(\D.*?)\s+(\d{1,2})\s*[-–—:]\s*(\d{1,2})\s+(\S.*)$/;
+
+  function readScore() {
+    const parse = (element) => {
+      if (element.textContent.length > 120 || element.closest("table, wa-popover, article")) return null;
+      if (element.querySelector("table, article")) return null;
+      const match = textOf(element).replace(/\s+/g, " ").trim().match(SCORE_PATTERN);
+      return match && match[0].length <= 90 ? match : null;
+    };
+    const find = (selector) => {
+      for (const element of document.querySelectorAll(selector)) {
+        const match = parse(element);
+        if (match) return match;
+      }
+      return null;
+    };
+    const match = find('h1, h2, h3, h4, header, [role="heading"]') ?? find("body *");
+    if (!match) return null;
+    const [text, first, firstScore, secondScore, second] = match;
+    return { text, teams: [first, second], values: [Number(firstScore), Number(secondScore)] };
+  }
+
   // Each card should show a number for both teams.
   function statsHaveNumbers(stats) {
     const cards = Object.values(stats);
@@ -616,6 +640,7 @@
     // Opening the Player Stats tab may remove what the current tab shows, so read
     // that first. Anything not found yet gets a second look afterwards.
     let teamStats = extractTeamStats();
+    let score = readScore();
     let keyEvents = findKeyEventsContainer() ? extractKeyEvents(warnings) : null;
 
     await openPlayerStats();
@@ -623,6 +648,7 @@
     const players = extractPlayerStats(warnings);
 
     if (!statsHaveNumbers(teamStats)) teamStats = extractTeamStats();
+    score ??= readScore();
     keyEvents ??= extractKeyEvents(warnings);
 
     if (players.rows.length === 0 && Object.keys(teamStats).length === 0) {
@@ -648,7 +674,8 @@
         scrapedAt: new Date().toISOString(),
         pageTitle: document.title,
         columnCount,
-        teamStats,
+        // Kept with the team stats, so saving needs no new database column.
+        teamStats: score ? { ...teamStats, Score: score } : teamStats,
         players,
         keyEvents,
         warnings,

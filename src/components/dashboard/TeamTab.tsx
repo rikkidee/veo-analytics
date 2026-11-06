@@ -8,6 +8,12 @@ import { StatCard } from "./parts";
 const OWN = { bar: "#1f6feb", fill: "rgba(31,111,235,.1)" };
 const OPP = { bar: "#da3633", fill: "rgba(218,54,51,.1)" };
 
+const RESULTS = {
+  win: { label: "Win", color: "#3fb950" },
+  draw: { label: "Draw", color: "#f0883e" },
+  loss: { label: "Loss", color: "#da3633" },
+};
+
 export default function TeamTab({ team }: { team: TeamModel }) {
   const { games, players, ownLabel } = team;
   const labels = games.map((game) => game.label);
@@ -182,6 +188,37 @@ export default function TeamTab({ team }: { team: TeamModel }) {
         />
         <StatCard value={players.length} label="Players" />
         <StatCard value={avgPossession} label="Avg Possession" />
+      </div>
+
+      <div className="section-title">Game Results</div>
+      <div className="chart-container" style={{ overflowX: "auto" }}>
+        <table>
+          <thead>
+            <tr>
+              <th>Game</th>
+              <th>Date</th>
+              <th>Opponent</th>
+              <th>Score</th>
+              <th>Result</th>
+            </tr>
+          </thead>
+          <tbody>
+            {games.map((game) => {
+              const { own: scored, opp: conceded } = game.stats.Goals;
+              const known = scored !== null && conceded !== null;
+              const result = !known ? null : scored > conceded ? RESULTS.win : scored < conceded ? RESULTS.loss : RESULTS.draw;
+              return (
+                <tr key={game.id}>
+                  <td><strong>{game.label}</strong></td>
+                  <td>{game.date}</td>
+                  <td>{game.opponent ?? "—"}</td>
+                  <td>{known ? `${scored}-${conceded}` : "—"}</td>
+                  <td style={result ? { color: result.color, fontWeight: 600 } : undefined}>{result?.label ?? "—"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
 
       <div className="section-title">Offensive Stats</div>

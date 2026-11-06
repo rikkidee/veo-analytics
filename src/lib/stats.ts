@@ -147,7 +147,8 @@ export type DashboardGame = {
   game_label: string;
   game_date: string;
   opponent: string | null;
-  team_stats: Record<string, { text?: string; values?: number[] }> | null;
+  /** Veo's stat cards by label, plus "Score" from the report's header, which also has `teams`. */
+  team_stats: Record<string, { text?: string; values?: number[]; teams?: string[] }> | null;
 };
 export type DashboardStatRow = { game_id: string; player_id: string; stats: StatLine };
 export type DashboardCorrection = {
