@@ -67,7 +67,7 @@ export default function Dashboard({ data }: { data: DashboardData }) {
   const model = useMemo(() => buildTeamModel(data, teamId), [data, teamId]);
 
   // Next keeps visited pages mounted but hidden, and this cleanup runs when hidden,
-  // so the dark page background doesn't follow the user to other pages.
+  // so the dashboard's full-width page rules don't follow the user to other pages.
   useLayoutEffect(() => {
     document.body.dataset.dashboard = "";
     return () => {

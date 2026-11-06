@@ -317,7 +317,7 @@ function InstallStep({ onContinue }: { onContinue: () => void }) {
         </button>
         <p role="status" className="text-sm">
           {status === "connected" && (
-            <span className="font-medium text-emerald-700 dark:text-emerald-400">
+            <span className="font-medium text-success">
               <span aria-hidden="true">✓ </span>Extension connected
               {version ? ` (version ${version})` : ""}
             </span>

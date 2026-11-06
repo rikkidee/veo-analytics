@@ -1,8 +1,12 @@
 @import "tailwindcss";
 
+/* The whole app is dark, so Tailwind's dark: styles always apply. */
+@custom-variant dark (&:where(*));
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0a0e17;
+  --foreground: #c9d1d9;
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -12,11 +16,54 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* The dashboard's palette, under the color names the pages use. */
+@theme {
+  --color-neutral-100: #e6edf3;
+  --color-neutral-300: #c9d1d9;
+  --color-neutral-400: #8b949e;
+  --color-neutral-500: #8b949e;
+  --color-neutral-700: #30363d;
+  --color-neutral-800: #30363d;
+  --color-neutral-900: #161b22;
+
+  /* Links and accents are blue, and primary buttons are green. */
+  --color-emerald-100: #e6edf3;
+  --color-emerald-400: #58a6ff;
+  --color-emerald-700: #238636;
+  --color-emerald-800: #2ea043;
+  --color-emerald-900: #1f6feb;
+
+  --color-amber-200: #f0883e;
+  --color-amber-400: #f0883e;
+  --color-amber-800: #6e4015;
+  --color-amber-950: #2a1a0c;
+
+  --color-red-400: #ff7b72;
+
+  --color-success: #3fb950;
+}
+
+/* Unlayered, so these win over utilities like bg-transparent. :where() keeps them
+   weak enough for the dashboard's own styles to win. */
+:where(h1, h2, h3, h4, legend) {
+  color: #e6edf3;
+}
+
+:where(input:not([type="checkbox"], [type="radio"], [type="submit"], [type="button"]), select, textarea) {
+  background-color: #0d1117;
+  border-color: #30363d;
+  color: #fff;
+}
+
+:where(input, textarea)::placeholder {
+  color: #8b949e;
+}
+
+/* Cards and sections. Warning boxes keep their own color, and form controls are above. */
+main :is(div, section, ul, form, fieldset).rounded-md.border:not([class*="amber"]),
+main :is(div, section, ul, form, fieldset).rounded-lg.border:not([class*="amber"]) {
+  background-color: #161b22;
+  border-color: #30363d;
 }
 
 /* Plays once when the next game's details appear after a save. */

@@ -1,13 +1,6 @@
 /* Matches the static season dashboard. Scoped so it can't reach the rest of the app. */
 body[data-dashboard] {
-  background: #0a0e17;
   overflow-x: clip;
-  color-scheme: dark;
-}
-body[data-dashboard] > header {
-  border-color: #30363d;
-  background: #0a0e17;
-  color: #e0e6ed;
 }
 
 .veo-dash {

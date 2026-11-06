@@ -106,7 +106,7 @@ export default function AuthForm({
           </p>
         )}
         {result?.notice && (
-          <p role="status" className="text-sm text-emerald-700 dark:text-emerald-400">
+          <p role="status" className="text-sm text-success">
             {result.notice}
           </p>
         )}
