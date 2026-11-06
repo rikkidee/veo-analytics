@@ -26,6 +26,8 @@ const TREND_STATS: [string, string][] = [
   ["High-intensity runs", "High-intensity Runs"], ["Loose ball recoveries", "Ball Recoveries"], ["Minutes tracked", "Minutes"],
 ];
 
+const MIN_MINUTES_FOR_RADAR_SCALE = 30;
+
 const RADAR_STATS = ["Passes", "Tackles", "Duels", "Interceptions", "Dribbles", "Sprints", "Shots", "Loose ball recoveries"];
 
 const COLUMN_TIPS: Record<string, string> = {
@@ -111,12 +113,18 @@ export default function PlayersTab({ team }: { team: TeamModel }) {
 
   const radar = useMemo<ChartConfig | null>(() => {
     if (!player) return null;
+    // A few minutes can give a huge per 60 rate, which would set the team's best and
+    // shrink everyone else's chart to almost nothing. So only regulars set the scale.
+    const regulars = players.filter(
+      (other) => (other.totals["Minutes tracked"] ?? 0) >= MIN_MINUTES_FOR_RADAR_SCALE,
+    );
+    const scalePlayers = regulars.length > 0 ? regulars : players;
     const rows = RADAR_STATS.map((stat) => {
-      const values = players.map((other) => other.per60[stat] ?? 0);
+      const values = scalePlayers.map((other) => other.per60[stat] ?? 0);
       const best = Math.max(...values, 1);
       const average = values.reduce((sum, value) => sum + value, 0) / values.length;
       const own = player.per60[stat] ?? 0;
-      return { own, average, ownScore: (own / best) * 100, averageScore: (average / best) * 100 };
+      return { own, average, ownScore: Math.min((own / best) * 100, 100), averageScore: (average / best) * 100 };
     });
     return {
       type: "radar",
