@@ -96,6 +96,7 @@ export type DashboardTeam = {
   club?: string | null;
   logo_url?: string | null;
   analysis?: string | null;
+  team_analysis?: string | null;
 };
 export type DashboardPlayer = {
   id: string;

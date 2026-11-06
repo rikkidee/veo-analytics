@@ -7,6 +7,8 @@ CREATE TABLE teams (
   logo_url TEXT,
   -- The dashboard's Analysis tab.
   analysis TEXT,
+  -- Written by AI, where analysis is written by hand.
+  team_analysis TEXT,
   created_by UUID REFERENCES auth.users(id),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );

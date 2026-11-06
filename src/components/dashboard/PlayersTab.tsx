@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { comparisonPlayers, KM_PER_MILE, type TeamModel } from "@/lib/dashboard";
 import Chart, { baseOptions, type ChartConfig } from "./Chart";
 import { NoMinutesNotice, StatCard } from "./parts";
+import type { SavedReport } from "./reports";
 import ScoutingReport from "./ScoutingReport";
 
 const SUMMARY_STATS = ["Goals", "Shots", "Passes successful", "Tackles", "Duels", "Interceptions", "Dribbles", "Loose ball recoveries", "High-intensity runs"];
@@ -50,7 +51,13 @@ const LOG_COLUMNS: [string, string | null][] = [
   ["Top Spd (kph)", "Top speed"], ["KM", "Distance tracked"],
 ];
 
-export default function PlayersTab({ team }: { team: TeamModel }) {
+export default function PlayersTab({
+  team,
+  reports,
+}: {
+  team: TeamModel;
+  reports: Record<string, SavedReport>;
+}) {
   const { players, games } = team;
   const [pickedId, setPickedId] = useState(players[0]?.id);
   const [mode, setMode] = useState<"total" | "per60">("total");
@@ -183,7 +190,7 @@ export default function PlayersTab({ team }: { team: TeamModel }) {
 
       {mode === "per60" && !team.hasMinutes && <NoMinutesNotice />}
 
-      <ScoutingReport key={player.id} player={player} />
+      <ScoutingReport key={player.id} player={player} autoReport={reports[player.id]} />
 
       <div className="grid">
         <StatCard value={player.gamesPlayed} label="Games" />

@@ -84,23 +84,32 @@ function describePlayer(player: PlayerModel, team: TeamModel, coachNotes: string
 
 export class ReportRefusedError extends Error {}
 
-export async function generateScoutingReport(
-  player: PlayerModel,
-  team: TeamModel,
-  coachNotes: string,
-): Promise<ScoutingReport> {
+async function askClaude<Schema extends z.ZodType>(schema: Schema, system: string, content: string) {
   const response = await new Anthropic().beta.messages.parse({
     model: "claude-opus-5-5",
     max_tokens: 16000,
     betas: ["server-side-fallback-2026-07-01"],
     fallbacks: "default",
-    output_config: { effort: "medium", format: betaZodOutputFormat(ReportSchema) },
-    system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: describePlayer(player, team, coachNotes) }],
+    output_config: { effort: "medium", format: betaZodOutputFormat(schema) },
+    system,
+    messages: [{ role: "user", content }],
   });
-
   if (response.stop_reason === "refusal" || !response.parsed_output) throw new ReportRefusedError();
-  return response.parsed_output;
+  return response.parsed_output as z.infer<Schema>;
+}
+
+export function generateScoutingReport(player: PlayerModel, team: TeamModel, coachNotes: string) {
+  return askClaude(ReportSchema, SYSTEM_PROMPT, describePlayer(player, team, coachNotes));
+}
+
+/** Turns a failed generation into the response to send, or null if it's not one we expect. */
+export function generationFailure(cause: unknown) {
+  const fail = (status: number, error: string) => Response.json({ error }, { status });
+  if (cause instanceof ReportRefusedError) return fail(502, "The AI couldn't write this one. Try again, or change the coach notes.");
+  if (cause instanceof Anthropic.AuthenticationError) return fail(503, "The Anthropic API key was rejected. Check ANTHROPIC_API_KEY.");
+  if (cause instanceof Anthropic.RateLimitError) return fail(429, "Too many requests to the AI at once. Reload the page in a minute to carry on.");
+  if (cause instanceof Anthropic.APIError) return fail(502, "The AI service had a problem. Try again in a moment.");
+  return null;
 }
 
 const escapeHtml = (text: string) =>
@@ -115,4 +124,112 @@ export function reportColumns(report: ScoutingReport, coachNotes: string) {
     areas_to_develop: escapeHtml(report.develop.trim()),
     coach_notes: coachNotes || null,
   };
+}
+
+const SectionSchema = z.object({
+  headline: z.string(),
+  paragraphs: z.array(z.string()),
+});
+const TeamAnalysisSchema = z.object({
+  strengths: SectionSchema,
+  develop: SectionSchema,
+  tactics: SectionSchema,
+  trends: SectionSchema,
+});
+
+// The example is invented. The real write-ups name children, and this repo is public.
+const TEAM_SYSTEM_PROMPT = `You write the season analysis on a youth soccer coach's dashboard. The players are children, around 12 and 13 years old. The coach uses it to plan training and decide how to set up the team.
+
+Write four sections:
+- strengths: what this team does well, overall.
+- develop: the biggest opportunities to improve, most valuable first.
+- tactics: observations the coach can act on, such as which players' numbers suit which roles, who complements whom, and how to use players whose minutes are limited.
+- trends: how the team has changed across the season, comparing early games with recent ones.
+
+Each section has a headline, one short bold sentence that states the main point, and one to three paragraphs of two to four sentences each.
+
+Here is the voice to match:
+
+headline: Passing accuracy is the single biggest opportunity.
+paragraph: The team completes 34% of passes, so two of every three don't reach a teammate. [P4] at 46% and [P9] at 43% show what retaining the ball does for sustained attacks. Pushing the team towards 40% would reduce the defensive workload as well as creating more chances.
+
+Rules:
+- Base every claim on the stats you're given, and only quote numbers that appear in them or follow directly from them. Don't invent events, opponents or skills the data can't show.
+- Refer to individual players only with their reference, exactly as given, such as [P4]. Don't guess at names.
+- Treat each player's coach notes as true, and let them change how you read that player's numbers.
+- Players marked low_minutes have rates based on very little time, so don't draw conclusions from them.
+- With fewer than three games, say that it's too early to call a trend rather than stretching the data.
+- Be honest about weaknesses, while keeping it constructive and about soccer. Never comment on bodies, appearance, personality flaws or anything off the field.
+- Write plain text with no markdown or HTML, apart from the player references.`;
+
+/** Players go out as [P1], [P2]..., so names and jerseys stay here. See insertPlayers. */
+function describeTeam(team: TeamModel) {
+  const compared = new Set(comparisonPlayers(team.players));
+  const passAccuracy = (passes: number, successful: number) =>
+    passes > 0 ? Math.round((successful / passes) * 100) : 0;
+
+  return JSON.stringify(
+    {
+      games: team.games.map((game) => {
+        const sum = (stat: string) =>
+          Math.round(team.players.reduce((total, player) => total + (player.perGame.get(game.label)?.[stat] ?? 0), 0));
+        const teamStats = Object.fromEntries(
+          Object.entries(game.stats).map(([stat, { own, opp }]) => [stat, { this_team: own, opponent: opp }]),
+        );
+        return {
+          game: game.label,
+          date: game.date,
+          ...teamStats,
+          tackles: sum("Tackles"),
+          duels: sum("Duels"),
+          interceptions: sum("Interceptions"),
+          loose_ball_recoveries: sum("Loose ball recoveries"),
+        };
+      }),
+      players: team.players.map((player, index) => ({
+        reference: `[P${index + 1}]`,
+        games_played: player.gamesPlayed,
+        minutes_played: Math.round(player.totals["Minutes tracked"] ?? 0),
+        low_minutes: !compared.has(player),
+        pass_accuracy_percent: passAccuracy(player.totals.Passes ?? 0, player.totals["Passes successful"] ?? 0),
+        goals: player.totals.Goals ?? 0,
+        per_60_minutes: Object.fromEntries(COMPARED_STATS.map((stat) => [stat, player.per60[stat] ?? 0])),
+        coach_notes: player.coachNotes ?? undefined,
+      })),
+    },
+    null,
+    2,
+  );
+}
+
+export function generateTeamAnalysis(team: TeamModel) {
+  return askClaude(TeamAnalysisSchema, TEAM_SYSTEM_PROMPT, describeTeam(team));
+}
+
+// Inline styles match the static dashboard's Analysis tab.
+const PARAGRAPH_STYLE = "color:#c9d1d9;line-height:1.8;font-size:15px;margin-bottom:16px";
+
+const TEAM_SECTIONS = [
+  { key: "strengths", title: "Team Strengths", color: "#3fb950" },
+  { key: "develop", title: "Areas to Develop", color: "#f0883e" },
+  { key: "tactics", title: "Tactical Observations", color: "#58a6ff" },
+  { key: "trends", title: "Season Trends", color: "#d2a8ff" },
+] as const;
+
+/** The saved form of an analysis, with each [P1] swapped for that player's jersey and name. */
+export function teamAnalysisHtml(analysis: z.infer<typeof TeamAnalysisSchema>, team: TeamModel) {
+  const insertPlayers = (text: string) =>
+    escapeHtml(text.trim()).replace(/\[P(\d+)\]/g, (_, number) => {
+      const player = team.players[Number(number) - 1];
+      return player ? `<strong>#${player.jersey} ${escapeHtml(player.name)}</strong>` : "one player";
+    });
+
+  return TEAM_SECTIONS.map(({ key, title, color }) => {
+    const { headline, paragraphs } = analysis[key];
+    const body = [
+      `<p style="${PARAGRAPH_STYLE}"><strong style="color:${color}">${insertPlayers(headline)}</strong></p>`,
+      ...paragraphs.map((paragraph) => `<p style="${PARAGRAPH_STYLE}">${insertPlayers(paragraph)}</p>`),
+    ].join("");
+    return `<div class="section-title">${title}</div><div class="chart-container" style="margin-bottom:24px">${body}</div>`;
+  }).join("");
 }

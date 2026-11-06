@@ -53,6 +53,7 @@ export type PlayerModel = {
 };
 
 export type TeamModel = {
+  id: string;
   /** The short name beside "OPP", like "MIS". */
   ownLabel: string;
   games: GameModel[];
@@ -60,6 +61,8 @@ export type TeamModel = {
   /** False when no saved report had minutes, which per 60 stats depend on. */
   hasMinutes: boolean;
   analysis: string | null;
+  /** Written by AI, where `analysis` is written by hand. */
+  teamAnalysis: string | null;
 };
 
 const TEAM_STAT_LABELS: Record<TeamStatName, RegExp> = {
@@ -248,10 +251,12 @@ export function buildTeamModel(data: DashboardData, teamId: string): TeamModel {
     .sort((a, b) => a.name.localeCompare(b.name));
 
   return {
+    id: teamId,
     ownLabel: shortLabel(team),
     games,
     players,
     hasMinutes: players.some((player) => (player.totals["Minutes tracked"] ?? 0) > 0),
     analysis: team?.analysis ?? null,
+    teamAnalysis: team?.team_analysis ?? null,
   };
 }

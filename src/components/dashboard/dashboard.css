@@ -66,6 +66,8 @@ body[data-dashboard] > header {
   .scouting .generate-row { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
   .generate-btn { background: #1f6feb; color: #fff; border: 1px solid #1f6feb; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; }
   .generate-btn:disabled { opacity: .6; cursor: default; }
+  .generate-status { background: #161b22; border: 1px solid #1f6feb; border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; color: #c9d1d9; font-size: 14px; }
+  .team-analysis-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
   .chart-error { color: #f0883e; font-size: 13px; margin-bottom: 16px; }
   a { color: #58a6ff; text-decoration: underline; }
 }

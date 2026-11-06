@@ -4,17 +4,23 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { PlayerModel } from "@/lib/dashboard";
 import { RichText } from "./parts";
+import { requestPlayerReport, type SavedReport } from "./reports";
 
-type Saved = Pick<PlayerModel, "nickname" | "report" | "strengths" | "develop">;
-
-export default function ScoutingReport({ player }: { player: PlayerModel }) {
+export default function ScoutingReport({
+  player,
+  autoReport,
+}: {
+  player: PlayerModel;
+  /** Set once the automatic run has written this player's report. */
+  autoReport?: SavedReport;
+}) {
   const router = useRouter();
-  const [generated, setGenerated] = useState<Saved | null>(null);
+  const [generated, setGenerated] = useState<SavedReport | null>(null);
   const [notes, setNotes] = useState(player.coachNotes ?? "");
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { nickname, report, strengths, develop } = generated ?? player;
+  const { nickname, report, strengths, develop } = generated ?? autoReport ?? player;
   const hasReport = Boolean(nickname || report || strengths || develop);
 
   async function generate() {
@@ -23,25 +29,13 @@ export default function ScoutingReport({ player }: { player: PlayerModel }) {
     setGenerating(true);
     setError(null);
     try {
-      const response = await fetch(`/api/players/${player.id}/report`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ coachNotes: notes }),
-      });
-      const result = await response.json().catch(() => null);
-      if (!response.ok) {
-        setError(result?.error ?? "The report couldn't be generated. Try again.");
-        return;
+      const result = await requestPlayerReport(player.id, notes, false);
+      if (result.report) {
+        setGenerated(result.report);
+        router.refresh();
+      } else {
+        setError(result.error);
       }
-      setGenerated({
-        nickname: result.nickname,
-        report: result.scouting_report,
-        strengths: result.strengths,
-        develop: result.areas_to_develop,
-      });
-      router.refresh();
-    } catch {
-      setError("Couldn't reach the server. Check your connection and try again.");
     } finally {
       setGenerating(false);
     }
@@ -77,12 +71,12 @@ export default function ScoutingReport({ player }: { player: PlayerModel }) {
           maxLength={2000}
           value={notes}
           onChange={(event) => setNotes(event.target.value)}
-          placeholder='Context the stats can&apos;t show, like "plays goalie half the time" or "just moved positions"'
+          placeholder="Add context for the AI (e.g. 'plays goalie half the time', 'just moved to forward')"
         />
       </label>
       <div className="generate-row">
         <button type="button" className="generate-btn" disabled={generating} onClick={generate}>
-          {generating ? "Generating…" : hasReport ? "Regenerate" : "Generate Analysis"}
+          {generating ? "Generating…" : hasReport ? "Regenerate Analysis" : "Generate Analysis"}
         </button>
         <span role="status" className="muted">
           {generating && "This can take up to a minute."}

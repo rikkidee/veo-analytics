@@ -6,8 +6,9 @@ import { useLayoutEffect, useMemo, useState } from "react";
 import { CHART_JS_URL, ChartReady } from "@/components/dashboard/Chart";
 import GameLogTab from "@/components/dashboard/GameLogTab";
 import LeaderboardTab from "@/components/dashboard/LeaderboardTab";
-import { RichText } from "@/components/dashboard/parts";
 import PlayersTab from "@/components/dashboard/PlayersTab";
+import { useAutoReports } from "@/components/dashboard/reports";
+import TeamAnalysis from "@/components/dashboard/TeamAnalysis";
 import TeamTab from "@/components/dashboard/TeamTab";
 import "@/components/dashboard/dashboard.css";
 import { buildTeamModel, type TeamModel } from "@/lib/dashboard";
@@ -25,20 +26,25 @@ type Tab = (typeof TABS)[number][0];
 // All tabs stay mounted and only hide, so each keeps its selections when switching.
 function TeamContent({ team, tab }: { team: TeamModel; tab: Tab }) {
   const panel = (name: Tab) => (tab === name ? undefined : "hidden");
+  const auto = useAutoReports(team);
   return (
     <>
+      {auto.status && (
+        <p role="status" className="generate-status">
+          {auto.status}
+        </p>
+      )}
+      {auto.problem && (
+        <p role="alert" className="chart-error">
+          {auto.problem}
+        </p>
+      )}
       <div className={panel("team")}><TeamTab team={team} /></div>
-      <div className={panel("players")}><PlayersTab team={team} /></div>
+      <div className={panel("players")}><PlayersTab team={team} reports={auto.reports} /></div>
       <div className={panel("leaderboard")}><LeaderboardTab team={team} /></div>
       <div className={panel("gamelog")}><GameLogTab team={team} /></div>
       <div className={panel("analysis")}>
-        {team.analysis ? (
-          <RichText html={team.analysis} />
-        ) : (
-          <p className="muted" style={{ marginTop: 32 }}>
-            No analysis has been written for this team yet.
-          </p>
-        )}
+        <TeamAnalysis team={team} autoAnalysis={auto.teamAnalysis} autoRunning={auto.generatingTeam} />
       </div>
     </>
   );
