@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { KM_PER_MILE, type PlayerModel, type TeamModel } from "@/lib/dashboard";
 import Chart, { baseOptions, type ChartConfig } from "./Chart";
-import { RichText, StatCard } from "./parts";
+import { NoMinutesNotice, RichText, StatCard } from "./parts";
 
 const SUMMARY_STATS = ["Goals", "Shots", "Passes successful", "Tackles", "Duels", "Interceptions", "Dribbles", "Loose ball recoveries", "High-intensity runs"];
 
@@ -202,6 +202,8 @@ export default function PlayersTab({ team }: { team: TeamModel }) {
           Per 60 Min
         </button>
       </div>
+
+      {mode === "per60" && !team.hasMinutes && <NoMinutesNotice />}
 
       <ScoutingReport player={player} />
 

@@ -19,17 +19,24 @@ export function isCountColumn(column: string) {
   return !isRate(column) && !isPeak(column) && !isMean(column);
 }
 
-/** Reads 54, "54", "54:30" (mm:ss) or "1:02:30" (h:mm:ss) as minutes. */
+/**
+ * Reads 40, "40", "40min", "40 mins", "40'", "40:00" (mm:ss), "1:02:30" (h:mm:ss)
+ * or "1h 2m" as minutes. chrome-extension/content.js has a copy of this, as the
+ * extension can't import from the app.
+ */
 export function toMinutes(value: CellValue): number | null {
   if (typeof value === "number") return value;
   if (typeof value !== "string") return null;
   const text = value.trim();
-  if (/^\d+(\.\d+)?$/.test(text)) return Number(text);
-  const parts = text.split(":").map(Number);
-  if (parts.some(Number.isNaN)) return null;
-  if (parts.length === 2) return parts[0] + parts[1] / 60;
-  if (parts.length === 3) return parts[0] * 60 + parts[1] + parts[2] / 60;
-  return null;
+
+  const plain = text.match(/^(\d+(?:\.\d+)?)\s*(?:m|mins?|minutes?|['’])?$/i);
+  if (plain) return Number(plain[1]);
+
+  const clock = text.match(/^(?:(\d+):)?(\d{1,3}):(\d{2})$/);
+  if (clock) return Number(clock[1] ?? 0) * 60 + Number(clock[2]) + Number(clock[3]) / 60;
+
+  const hours = text.match(/^(\d+)\s*h(?:rs?|ours?)?(?:\s*(\d+)\s*m(?:ins?|inutes?)?)?$/i);
+  return hours ? Number(hours[1]) * 60 + Number(hours[2] ?? 0) : null;
 }
 
 function mean(values: number[]) {

@@ -56,6 +56,8 @@ export type TeamModel = {
   ownLabel: string;
   games: GameModel[];
   players: PlayerModel[];
+  /** False when no saved report had minutes, which per 60 stats depend on. */
+  hasMinutes: boolean;
   analysis: string | null;
 };
 
@@ -226,14 +228,17 @@ export function buildTeamModel(data: DashboardData, teamId: string): TeamModel {
       stats: readTeamStats(game.team_stats),
     }));
 
+  const players = data.players
+    .filter((player) => player.team_id === teamId)
+    .map((player) => buildPlayer(player, data, games))
+    .filter((player) => player.gamesPlayed > 0)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
   return {
     ownLabel: shortLabel(team),
     games,
-    players: data.players
-      .filter((player) => player.team_id === teamId)
-      .map((player) => buildPlayer(player, data, games))
-      .filter((player) => player.gamesPlayed > 0)
-      .sort((a, b) => a.name.localeCompare(b.name)),
+    players,
+    hasMinutes: players.some((player) => (player.totals["Minutes tracked"] ?? 0) > 0),
     analysis: team?.analysis ?? null,
   };
 }

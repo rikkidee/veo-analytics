@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { KM_PER_MILE, type TeamModel } from "@/lib/dashboard";
 import Chart, { SERIES_COLORS, type ChartConfig } from "./Chart";
+import { NoMinutesNotice } from "./parts";
 
 const STATS: [string, string][] = [
   ["Goals", "Goals"], ["Passes successful", "Successful Passes"], ["Pass %", "Pass %"], ["Tackles", "Tackles"],
@@ -124,6 +125,7 @@ export default function LeaderboardTab({ team }: { team: TeamModel }) {
           <option value="per60">Per 60 Min</option>
         </select>
       </div>
+      {mode === "per60" && !team.hasMinutes && <NoMinutesNotice />}
       <div className="chart-container"><Chart config={chart} /></div>
       <div style={{ overflowX: "auto" }}>
         <table>

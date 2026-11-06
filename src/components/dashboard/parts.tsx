@@ -21,6 +21,15 @@ export function StatCard({
   );
 }
 
+/** Shown with per 60 stats, which would otherwise read as all zeros with no explanation. */
+export function NoMinutesNotice() {
+  return (
+    <p role="status" className="chart-error">
+      Per 60 needs minutes, and these games were saved without any. Import them again to fill them in.
+    </p>
+  );
+}
+
 const ALLOWED_TAGS = new Set([
   "p", "div", "span", "h3", "strong", "em", "br", "table", "tbody", "tr", "th", "td",
 ]);

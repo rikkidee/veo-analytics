@@ -17,7 +17,8 @@ export default function GameLogTab({ team }: { team: TeamModel }) {
   const gamePlayers = players
     .flatMap((player) => {
       const line = player.perGame.get(game.label);
-      return line && (line["Minutes tracked"] ?? 0) > 0 ? [{ player, line }] : [];
+      // Rows without minutes are only dropped when minutes exist to tell who played.
+      return line && (!team.hasMinutes || (line["Minutes tracked"] ?? 0) > 0) ? [{ player, line }] : [];
     })
     .sort((a, b) => (b.line["Minutes tracked"] ?? 0) - (a.line["Minutes tracked"] ?? 0));
 

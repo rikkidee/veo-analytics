@@ -17,6 +17,7 @@
 
   const TARGET_COUNT = "29/33";
   const REQUIRED_COLUMNS = [
+    "Minutes tracked",
     "Passes",
     "Passes success rate",
     "Passes successful",
@@ -418,6 +419,20 @@
     return match ? Number(match[1].replace(/,/g, "")) : text;
   }
 
+  const isMinutesHeader = (header) => /^(minutes|mins?\b|time played|playing time)/i.test(header.trim());
+
+  // Reads 40, "40min", "40 mins", "40'", "40:00", "1:02:30" or "1h 2m" as minutes.
+  // Keep in step with toMinutes in src/lib/stats.ts.
+  function parseMinutes(raw) {
+    const text = raw.trim();
+    const plain = text.match(/^(\d+(?:\.\d+)?)\s*(?:m|mins?|minutes?|['’])?$/i);
+    if (plain) return Number(plain[1]);
+    const clock = text.match(/^(?:(\d+):)?(\d{1,3}):(\d{2})$/);
+    if (clock) return Number(clock[1] ?? 0) * 60 + Number(clock[2]) + Number(clock[3]) / 60;
+    const hours = text.match(/^(\d+)\s*h(?:rs?|ours?)?(?:\s*(\d+)\s*m(?:ins?|inutes?)?)?$/i);
+    return hours ? Number(hours[1]) * 60 + Number(hours[2] ?? 0) : null;
+  }
+
   function extractTeamStats() {
     const stats = {};
     for (const article of document.querySelectorAll("article[aria-label]")) {
@@ -458,6 +473,11 @@
     const playerColumn = headers.findIndex((header) => /^player\b/.test(normalize(header)));
     const rows = [];
     let mismatched = 0;
+    let unreadMinutes = 0;
+
+    if (!headers.some(isMinutesHeader)) {
+      warnings.push("This report has no minutes column, so per 60 stats won't work for this game.");
+    }
 
     for (const row of [...table.tBodies].flatMap((body) => [...body.rows])) {
       const rowCells = [...row.cells];
@@ -467,12 +487,24 @@
       const player = readPlayerCell(rowCells[playerColumn]);
       const cells = {};
       rowCells.forEach((cell, index) => {
-        cells[headers[index] ?? `column_${index + 1}`] =
-          index === playerColumn ? player.name : parseValue(textOf(cell));
+        const header = headers[index] ?? `column_${index + 1}`;
+        const text = textOf(cell);
+        if (index === playerColumn) {
+          cells[header] = player.name;
+        } else if (isMinutesHeader(header)) {
+          const minutes = parseMinutes(text);
+          if (minutes === null && parseValue(text) !== null) unreadMinutes += 1;
+          cells[header] = minutes ?? parseValue(text);
+        } else {
+          cells[header] = parseValue(text);
+        }
       });
       rows.push({ jersey: player.jersey, name: player.name, cells });
     }
 
+    if (unreadMinutes > 0) {
+      warnings.push(`${unreadMinutes} row(s) had minutes in a format that couldn't be read, so per 60 stats may be off for this game.`);
+    }
     if (mismatched > 0) {
       warnings.push(`${mismatched} row(s) had a different cell count than the ${headers.length} headers. Check that columns lined up.`);
     }

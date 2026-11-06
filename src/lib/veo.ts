@@ -185,6 +185,16 @@ export function creditsForMatchedEvents(
   });
 }
 
+/** Minutes are saved as a number, however the report wrote them. */
+function withNumericMinutes(cells: StatLine): StatLine {
+  return Object.fromEntries(
+    Object.entries(cells).map(([column, value]) => [
+      column,
+      isMinutesColumn(column) ? (toMinutes(value) ?? value) : value,
+    ]),
+  );
+}
+
 export type PlayerGameStatRecord = {
   player_id: string;
   stats: StatLine;
@@ -213,7 +223,7 @@ export function buildPlayerStats(
     const player = roster.find((other) => other.id === playerId);
     const remapped = rows.some((row) => row.jersey !== player?.default_jersey);
     if (rows.length === 1) {
-      return { player_id: playerId, stats: rows[0].cells, is_corrected: remapped };
+      return { player_id: playerId, stats: withNumericMinutes(rows[0].cells), is_corrected: remapped };
     }
     return {
       player_id: playerId,
