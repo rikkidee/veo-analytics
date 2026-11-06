@@ -23,6 +23,7 @@ CREATE TABLE players (
   -- Shown on the dashboard's player profile.
   strengths TEXT,
   areas_to_develop TEXT,
+  coach_notes TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

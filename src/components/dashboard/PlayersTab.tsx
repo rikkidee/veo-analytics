@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { KM_PER_MILE, type PlayerModel, type TeamModel } from "@/lib/dashboard";
+import { comparisonPlayers, KM_PER_MILE, type TeamModel } from "@/lib/dashboard";
 import Chart, { baseOptions, type ChartConfig } from "./Chart";
-import { NoMinutesNotice, RichText, StatCard } from "./parts";
+import { NoMinutesNotice, StatCard } from "./parts";
+import ScoutingReport from "./ScoutingReport";
 
 const SUMMARY_STATS = ["Goals", "Shots", "Passes successful", "Tackles", "Duels", "Interceptions", "Dribbles", "Loose ball recoveries", "High-intensity runs"];
 
@@ -25,8 +26,6 @@ const TREND_STATS: [string, string][] = [
   ["Interceptions", "Interceptions"], ["Dribbles", "Dribbles"], ["Sprints", "Sprints"], ["Shots", "Shots"],
   ["High-intensity runs", "High-intensity Runs"], ["Loose ball recoveries", "Ball Recoveries"], ["Minutes tracked", "Minutes"],
 ];
-
-const MIN_MINUTES_FOR_RADAR_SCALE = 30;
 
 const RADAR_STATS = ["Passes", "Tackles", "Duels", "Interceptions", "Dribbles", "Sprints", "Shots", "Loose ball recoveries"];
 
@@ -50,31 +49,6 @@ const LOG_COLUMNS: [string, string | null][] = [
   ["Recoveries", "Loose ball recoveries"], ["HI Runs", "High-intensity runs"], ["Sprints", "Sprints"],
   ["Top Spd (kph)", "Top speed"], ["KM", "Distance tracked"],
 ];
-
-function ScoutingReport({ player }: { player: PlayerModel }) {
-  if (!player.nickname && !player.report && !player.strengths && !player.develop) return null;
-  return (
-    <div className="chart-container scouting">
-      <h3>
-        #{player.jersey} {player.name}
-        {player.nickname ? ` — "${player.nickname}"` : ""}
-      </h3>
-      <div className="report">
-        {player.report && <RichText html={player.report} />}
-        {player.strengths && (
-          <div style={{ marginTop: 12 }}>
-            <strong style={{ color: "#3fb950" }}>Strengths:</strong> <RichText html={player.strengths} />
-          </div>
-        )}
-        {player.develop && (
-          <div style={{ marginTop: 8 }}>
-            <strong style={{ color: "#f0883e" }}>Areas to Develop:</strong> <RichText html={player.develop} />
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
 export default function PlayersTab({ team }: { team: TeamModel }) {
   const { players, games } = team;
@@ -113,12 +87,8 @@ export default function PlayersTab({ team }: { team: TeamModel }) {
 
   const radar = useMemo<ChartConfig | null>(() => {
     if (!player) return null;
-    // A few minutes can give a huge per 60 rate, which would set the team's best and
-    // shrink everyone else's chart to almost nothing. So only regulars set the scale.
-    const regulars = players.filter(
-      (other) => (other.totals["Minutes tracked"] ?? 0) >= MIN_MINUTES_FOR_RADAR_SCALE,
-    );
-    const scalePlayers = regulars.length > 0 ? regulars : players;
+    // Otherwise a low-minutes rate would shrink everyone else's chart to almost nothing.
+    const scalePlayers = comparisonPlayers(players);
     const rows = RADAR_STATS.map((stat) => {
       const values = scalePlayers.map((other) => other.per60[stat] ?? 0);
       const best = Math.max(...values, 1);
@@ -213,7 +183,7 @@ export default function PlayersTab({ team }: { team: TeamModel }) {
 
       {mode === "per60" && !team.hasMinutes && <NoMinutesNotice />}
 
-      <ScoutingReport player={player} />
+      <ScoutingReport key={player.id} player={player} />
 
       <div className="grid">
         <StatCard value={player.gamesPlayed} label="Games" />

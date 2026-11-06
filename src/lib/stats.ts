@@ -106,6 +106,7 @@ export type DashboardPlayer = {
   scouting_report?: string | null;
   strengths?: string | null;
   areas_to_develop?: string | null;
+  coach_notes?: string | null;
 };
 export type DashboardGame = {
   id: string;

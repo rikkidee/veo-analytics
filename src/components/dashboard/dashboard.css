@@ -61,6 +61,11 @@ body[data-dashboard] > header {
   .scouting { margin-bottom: 16px; }
   .scouting h3 { color: #58a6ff; margin-bottom: 12px; }
   .scouting .report { color: #c9d1d9; line-height: 1.6; font-size: 15px; }
+  .scouting .notes { display: block; margin-top: 16px; color: #8b949e; font-size: 13px; }
+  .scouting textarea { display: block; width: 100%; margin-top: 6px; padding: 10px 12px; background: #0d1117; color: #e0e6ed; border: 1px solid #30363d; border-radius: 8px; font: inherit; font-size: 14px; resize: vertical; }
+  .scouting .generate-row { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+  .generate-btn { background: #1f6feb; color: #fff; border: 1px solid #1f6feb; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; }
+  .generate-btn:disabled { opacity: .6; cursor: default; }
   .chart-error { color: #f0883e; font-size: 13px; margin-bottom: 16px; }
   a { color: #58a6ff; text-decoration: underline; }
 }

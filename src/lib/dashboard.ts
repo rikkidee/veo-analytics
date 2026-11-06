@@ -45,6 +45,7 @@ export type PlayerModel = {
   report: string | null;
   strengths: string | null;
   develop: string | null;
+  coachNotes: string | null;
   gamesPlayed: number;
   totals: StatValues;
   per60: StatValues;
@@ -94,6 +95,17 @@ const PLAYER_COLUMNS: [string, RegExp][] = [
   ["Fouls", /^fouls?$/i],
   ["Saves", /^saves?$/i],
 ];
+
+// A few minutes can give a huge per 60 rate, so only regulars set comparisons.
+const MIN_MINUTES_FOR_COMPARISON = 30;
+
+/** The players whose per 60 rates set the team's best and average. */
+export function comparisonPlayers(players: PlayerModel[]) {
+  const regulars = players.filter(
+    (player) => (player.totals["Minutes tracked"] ?? 0) >= MIN_MINUTES_FOR_COMPARISON,
+  );
+  return regulars.length > 0 ? regulars : players;
+}
 
 const round1 = (value: number) => Math.round(value * 10) / 10;
 
@@ -208,6 +220,7 @@ function buildPlayer(
     report: player.scouting_report ?? null,
     strengths: player.strengths ?? null,
     develop: player.areas_to_develop ?? null,
+    coachNotes: player.coach_notes ?? null,
     gamesPlayed: perGame.size,
     totals,
     per60,
