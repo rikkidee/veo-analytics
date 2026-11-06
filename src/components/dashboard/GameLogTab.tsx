@@ -9,7 +9,12 @@ const PERCENT_STATS = new Set(["Possession", "Pass accuracy"]);
 export default function GameLogTab({ team }: { team: TeamModel }) {
   const { games, players, ownLabel } = team;
   const [gameId, setGameId] = useState(games[0]?.id);
-  const game = games.find((other) => other.id === gameId) ?? games[0];
+  const position = Math.max(0, games.findIndex((other) => other.id === gameId));
+  const game = games[position];
+  // A total with nothing to compare it to reads as a lopsided result rather than a comparison.
+  const statsShown = TEAM_STATS.filter(
+    (stat) => stat !== "Total passes" || (game.stats[stat].own !== null && game.stats[stat].opp !== null),
+  );
 
   const format = (stat: string, value: number | null) =>
     value === null ? "—" : `${value}${PERCENT_STATS.has(stat) ? "%" : ""}`;
@@ -26,6 +31,14 @@ export default function GameLogTab({ team }: { team: TeamModel }) {
     <>
       <div className="section-title">Game Log</div>
       <div className="toggle-row">
+        <button
+          type="button"
+          className="toggle-btn"
+          disabled={position === 0}
+          onClick={() => setGameId(games[position - 1].id)}
+        >
+          <span aria-hidden="true">← </span>Back
+        </button>
         <select
           aria-label="Game"
           style={{ minWidth: 250 }}
@@ -39,10 +52,18 @@ export default function GameLogTab({ team }: { team: TeamModel }) {
             </option>
           ))}
         </select>
+        <button
+          type="button"
+          className="toggle-btn"
+          disabled={position === games.length - 1}
+          onClick={() => setGameId(games[position + 1].id)}
+        >
+          Next<span aria-hidden="true"> →</span>
+        </button>
       </div>
       {game.trackingLooksHigh && <HighTrackingNotice games={[game]} />}
       <div className="grid">
-        {TEAM_STATS.map((stat) => (
+        {statsShown.map((stat) => (
           <StatCard
             key={stat}
             value={`${format(stat, game.stats[stat].own)} — ${format(stat, game.stats[stat].opp)}`}

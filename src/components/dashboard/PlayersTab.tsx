@@ -11,7 +11,7 @@ const SUMMARY_STATS = ["Goals", "Shots", "Passes successful", "Tackles", "Duels"
 
 const TIPS: Record<string, string> = {
   Goals: "Attempts on goal that resulted in a score",
-  Shots: "Attempts on goal that did not result in a goal",
+  Shots: "Attempts on goal. Every goal counts as at least one shot",
   Tackles: "Dispossessing an opponent by making physical contact to win the ball",
   Duels: "Any 1v1 contest between two opposing players for the ball",
   Interceptions: "Cutting out or intercepting a pass intended for an opponent",
@@ -47,7 +47,7 @@ const MODES: [Mode, string][] = [["total", "Season Total"], ["perGame", "Per Gam
 
 const COLUMN_TIPS: Record<string, string> = {
   Goals: "Attempts resulting in a score",
-  Shots: "Attempts that did not result in a goal",
+  Shots: "Attempts on goal. Every goal counts as at least one",
   "Pass Succ": "Passes that reach a teammate",
   "Pass %": "Percentage of passes that were successful",
   Tackles: "Dispossessing an opponent with physical contact",

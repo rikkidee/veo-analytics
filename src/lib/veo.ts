@@ -1,4 +1,12 @@
-import { combineStats, EVENT_COLUMNS, isMinutesColumn, isSamePerson, toMinutes, type StatLine } from "@/lib/stats";
+import {
+  combineStats,
+  EVENT_COLUMNS,
+  isMinutesColumn,
+  isSamePerson,
+  toMinutes,
+  withShotsForGoals,
+  type StatLine,
+} from "@/lib/stats";
 
 export type VeoPlayerRow = {
   jersey: number | null;
@@ -289,12 +297,12 @@ export function buildPlayerStats(
     const player = roster.find((other) => other.id === playerId);
     const remapped = rows.some((row) => row.jersey !== player?.default_jersey);
     if (rows.length === 1) {
-      return { player_id: playerId, stats: withNumericMinutes(rows[0].cells), is_corrected: remapped };
+      return { player_id: playerId, stats: withShotsForGoals(withNumericMinutes(rows[0].cells)), is_corrected: remapped };
     }
     return {
       player_id: playerId,
       // Text columns such as the player cell have no meaningful combined value.
-      stats: combineStats(rows.map((row) => row.cells)),
+      stats: withShotsForGoals(combineStats(rows.map((row) => row.cells))),
       is_corrected: true,
     };
   });

@@ -60,6 +60,16 @@ export function readStat(column: string, value: CellValue) {
   return metric ? number / KM_PER_MILE : number;
 }
 
+/** Every goal counts as at least one shot, however the report counted them. */
+export function withShotsForGoals(stats: StatLine): StatLine {
+  const columns = Object.keys(stats);
+  const goalsColumn = columns.find((column) => /^goals?$/i.test(column.trim()));
+  const shotsColumn = columns.find((column) => /^shots?$/i.test(column.trim())) ?? "Shots";
+  const goals = goalsColumn === undefined ? null : readStat(goalsColumn, stats[goalsColumn]);
+  if (!goals || goals <= (readStat(shotsColumn, stats[shotsColumn] ?? null) ?? 0)) return stats;
+  return { ...stats, [shotsColumn]: goals };
+}
+
 const normalizeName = (name: string) => name.replace(/\s+/g, " ").trim().toLowerCase();
 
 /** Roster entries for one person. Identical names on different jerseys are two people. */

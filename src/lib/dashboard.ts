@@ -261,6 +261,8 @@ function buildPlayer(
       const column = EVENT_COLUMNS[correction.event_type];
       if (column) line[column] = (line[column] ?? 0) + (correction.value ?? 1);
     }
+    // Here as well as on saving, as rows already saved and goals assigned by hand go through here.
+    if (line.Goals > 0) line.Shots = Math.max(line.Shots ?? 0, line.Goals);
     const passes = line.Passes ?? 0;
     const accuracy = passes > 0 ? Math.round(((line["Passes successful"] ?? 0) / passes) * 100) : 0;
     perGame.set(game.label, { ...line, "Pass %": accuracy });
