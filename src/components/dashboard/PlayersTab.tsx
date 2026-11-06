@@ -180,6 +180,12 @@ export default function PlayersTab({
           </button>
         ))}
       </div>
+      {games.some((game) => !player.perGame.has(game.label) && (game.unassignedJerseys ?? 0) > 0) && (
+        <p className="muted" style={{ marginTop: 12 }}>
+          {player.name} has data from {player.gamesPlayed} of {games.length} games — some jersey detections may be
+          unmatched.
+        </p>
+      )}
       <div className="toggle-row" style={{ marginTop: 16 }}>
         <span className="muted">View:</span>
         <button type="button" className={`toggle-btn ${mode === "total" ? "active" : ""}`} onClick={() => setMode("total")}>

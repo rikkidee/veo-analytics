@@ -1,9 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  attributeEvents,
+  autoChoices,
   buildPlayerStats,
+  creditsForMatchedEvents,
   NOISE,
   type JerseyChoice,
   type RosterPlayer,
+  type VeoGame,
   type VeoPayload,
 } from "@/lib/veo";
 
@@ -15,9 +19,51 @@ export type SaveGameInput = {
   opponent: string;
   roster: RosterPlayer[];
   choices: Record<number, JerseyChoice>;
-  /** One entry per goal or shot assigned to a player by hand. */
-  eventAssignments: { type: "goal" | "shot"; playerId: string }[];
+  /** One entry per goal or shot credited to a player. `eventIndex` marks a hand assignment. */
+  eventAssignments: { type: "goal" | "shot"; playerId: string; eventIndex?: number }[];
 };
+
+export type SavedGame = {
+  label: string;
+  date: string;
+  opponent: string | null;
+  teamId: string;
+  /** Null for games saved before reports were kept. */
+  payload: VeoPayload | null;
+  choices: Record<number, JerseyChoice>;
+  eventChoices: Record<number, string>;
+};
+
+/** Loads a saved game and the decisions made on it, ready to edit. */
+export async function loadSavedGame(supabase: SupabaseClient, gameId: string): Promise<SavedGame> {
+  const [game, mappings, corrections] = await Promise.all([
+    supabase
+      .from("games")
+      .select("game_label, game_date, opponent, team_id, veo_payload")
+      .eq("id", gameId)
+      .single(),
+    supabase.from("jersey_mappings").select("detected_jersey, player_id, is_noise").eq("game_id", gameId),
+    supabase
+      .from("event_corrections")
+      .select("event_index, player_id")
+      .eq("game_id", gameId)
+      .not("event_index", "is", null),
+  ]);
+  const failure = game.error ?? mappings.error ?? corrections.error;
+  if (failure) throw failure;
+
+  return {
+    label: game.data!.game_label,
+    date: game.data!.game_date,
+    opponent: game.data!.opponent,
+    teamId: game.data!.team_id,
+    payload: game.data!.veo_payload,
+    choices: Object.fromEntries(
+      mappings.data!.map((row) => [row.detected_jersey, row.is_noise ? NOISE : (row.player_id ?? "")]),
+    ),
+    eventChoices: Object.fromEntries(corrections.data!.map((row) => [row.event_index, row.player_id])),
+  };
+}
 
 /**
  * Writes one game and everything under it. A game already imported from the same
@@ -36,6 +82,7 @@ export async function saveGame(supabase: SupabaseClient, input: SaveGameInput) {
     opponent: input.opponent.trim() || null,
     veo_url: payload.veoUrl,
     team_stats: payload.teamStats,
+    veo_payload: payload,
   };
 
   const { data: existing, error: lookupError } = await supabase
@@ -89,6 +136,7 @@ export async function saveGame(supabase: SupabaseClient, input: SaveGameInput) {
         player_id: assignment.playerId,
         event_type: assignment.type,
         value: 1,
+        event_index: assignment.eventIndex ?? null,
       })),
     );
     if (error) throw error;
@@ -97,11 +145,54 @@ export async function saveGame(supabase: SupabaseClient, input: SaveGameInput) {
   return gameId;
 }
 
+/**
+ * Saves a report without asking anything, leaving jerseys it can't place unassigned.
+ * Importing a saved game again keeps what people decided or edited on it.
+ */
+export async function autoSaveGame(
+  supabase: SupabaseClient,
+  input: { teamId: string; payload: VeoPayload; game: VeoGame | null; roster: RosterPlayer[] },
+) {
+  const { teamId, payload, game, roster } = input;
+  const { data: found, error } = await supabase
+    .from("games")
+    .select("id")
+    .eq("team_id", teamId)
+    .eq("veo_url", payload.veoUrl)
+    .limit(1);
+  if (error) throw error;
+  const saved = found[0] ? await loadSavedGame(supabase, found[0].id) : null;
+
+  const choices = autoChoices(payload, roster, saved?.choices);
+  const { matched, unassigned } = attributeEvents(payload, choices, roster);
+  await saveGame(supabase, {
+    teamId,
+    payload,
+    roster,
+    choices,
+    label: saved?.label || game?.title || payload.pageTitle || "Untitled game",
+    // The date has to exist, and can be corrected from Map Jerseys if Veo's couldn't be read.
+    date: saved?.date || game?.date || payload.scrapedAt.slice(0, 10),
+    opponent: saved?.opponent || game?.opponent || "",
+    eventAssignments: [
+      ...creditsForMatchedEvents(payload, matched, choices),
+      ...unassigned.flatMap(({ event, index }) => {
+        const playerId = saved?.eventChoices[index];
+        return playerId ? [{ type: event.type, playerId, eventIndex: index }] : [];
+      }),
+    ],
+  });
+}
+
 export function describeSaveError(cause: unknown) {
   const { code, message } = (cause ?? {}) as { code?: string; message?: string };
   // PGRST205: the table isn't in the API's schema. 42P01: Postgres has no such table.
   if (code === "PGRST205" || code === "42P01") {
     return "The database isn't set up yet. Run supabase/schema.sql in the Supabase SQL Editor, then save again.";
+  }
+  // PGRST204 and 42703: a column the app needs is missing.
+  if (code === "PGRST204" || code === "42703") {
+    return "The database needs an update. Run supabase/add-saved-game-editing.sql in the Supabase SQL Editor, then try again.";
   }
   return message || "Could not save this game.";
 }

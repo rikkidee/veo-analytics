@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { primaryButton, secondaryButton } from "@/components/import/buttons";
+import { primaryButton } from "@/components/import/buttons";
 import { describeSaveError, saveGame } from "@/lib/games";
 import { getSupabase } from "@/lib/supabase/client";
 import {
@@ -28,11 +28,16 @@ type MappingStepProps = {
   roster: RosterPlayer[];
   payload: VeoPayload;
   game: VeoGame | null;
+  gameId: string;
   position: number;
   total: number;
-  /** Plays a brief flash as this game appears. */
-  justSaved: boolean;
-  onDone: (outcome: "saved" | "skipped") => void;
+  /** The decisions saved on this game so far. */
+  saved: { choices: Record<number, string>; eventChoices: Record<number, string> };
+  /** Each player's saved minutes, by game. */
+  seasonMinutes: Record<string, Record<string, number>>;
+  /** Called when the user changes anything on the form. */
+  onEdit: () => void;
+  onSaved: () => void;
 };
 
 // Dates are plain calendar days, so UTC keeps them from shifting across time zones.
@@ -59,10 +64,13 @@ export default function MappingStep({
   roster,
   payload,
   game,
+  gameId,
   position,
   total,
-  justSaved,
-  onDone,
+  saved,
+  seasonMinutes,
+  onEdit,
+  onSaved,
 }: MappingStepProps) {
   const jerseys = detectedJerseys(payload);
   const unreadRows = payload.players.rows.filter((row) => row.jersey === null).length;
@@ -70,8 +78,10 @@ export default function MappingStep({
   const [label, setLabel] = useState(game?.title || payload.pageTitle || "");
   const [date, setDate] = useState(game?.date ?? "");
   const [opponent, setOpponent] = useState(game?.opponent ?? "");
-  const [overrides, setOverrides] = useState<Record<number, string>>({});
-  const [eventChoices, setEventChoices] = useState<Record<number, string>>({});
+  const [overrides, setOverrides] = useState<Record<number, string>>(saved.choices);
+  const [eventChoices, setEventChoices] = useState<Record<number, string>>(saved.eventChoices);
+  // What's saved, which the minutes comparison measures from.
+  const [savedChoices, setSavedChoices] = useState(saved.choices);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -86,15 +96,34 @@ export default function MappingStep({
   const choices = Object.fromEntries(
     jerseys.map((jersey) => [jersey, overrides[jersey] ?? suggestPlayer(jersey, roster)]),
   );
-  // Jerseys needing a decision come first. Sorted by the suggestion rather than the
-  // current choice, so a row doesn't jump while it's being changed.
+  // Unassigned jerseys come first. Sorted by what's saved rather than the current
+  // choice, so a row doesn't jump while it's being changed.
   const orderedJerseys = [
-    ...jerseys.filter((jersey) => !suggestPlayer(jersey, roster)),
-    ...jerseys.filter((jersey) => suggestPlayer(jersey, roster)),
+    ...jerseys.filter((jersey) => !savedChoices[jersey]),
+    ...jerseys.filter((jersey) => savedChoices[jersey]),
   ];
   const veoNames = new Map(payload.players.rows.map((row) => [row.jersey, row.name]));
   const jerseyMinutes = minutesByJersey(payload);
   const undecided = jerseys.filter((jersey) => !choices[jersey]);
+
+  const minutesHere = (playerId: string, from: Record<number, string>) =>
+    jerseys.reduce((sum, jersey) => sum + (from[jersey] === playerId ? (jerseyMinutes.get(jersey) ?? 0) : 0), 0);
+  const minutesElsewhere = (playerId: string) =>
+    Object.entries(seasonMinutes[playerId] ?? {}).reduce(
+      (sum, [otherGame, minutes]) => sum + (otherGame === gameId ? 0 : minutes),
+      0,
+    );
+  const playerMinutes = roster
+    .map((player) => {
+      const elsewhere = minutesElsewhere(player.id);
+      return {
+        player,
+        before: Math.round(elsewhere + minutesHere(player.id, savedChoices)),
+        after: Math.round(elsewhere + minutesHere(player.id, choices)),
+      };
+    })
+    .sort((a, b) => a.after - b.after);
+  const mostMinutes = Math.max(...playerMinutes.map(({ after }) => after), 1);
   const { matched: matchedEvents, unassigned: events } = attributeEvents(payload, choices, roster);
 
   function renderJerseyRow(jersey: number) {
@@ -119,7 +148,7 @@ export default function MappingStep({
           }
           className={`${selectClass} basis-full sm:basis-0`}
         >
-          <option value="">Choose…</option>
+          <option value="">Unassigned</option>
           <PlayerOptions roster={roster} />
           <option value={NOISE}>Skip: opponent or not a player</option>
         </select>
@@ -143,11 +172,12 @@ export default function MappingStep({
         eventAssignments: [
           ...creditsForMatchedEvents(payload, matchedEvents, choices),
           ...events.flatMap(({ event: keyEvent, index }) =>
-            eventChoices[index] ? [{ type: keyEvent.type, playerId: eventChoices[index] }] : [],
+            eventChoices[index] ? [{ type: keyEvent.type, playerId: eventChoices[index], eventIndex: index }] : [],
           ),
         ],
       });
-      onDone("saved");
+      setSavedChoices(choices);
+      onSaved();
     } catch (cause) {
       setError(describeSaveError(cause));
     } finally {
@@ -156,11 +186,9 @@ export default function MappingStep({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+    <form onSubmit={handleSubmit} onChange={onEdit} className="flex flex-col gap-6">
       <div className="flex flex-col gap-3">
-        <div
-          className={`rounded-lg border border-neutral-200 p-4 dark:border-neutral-800 ${justSaved ? "saved-flash" : ""}`}
-        >
+        <div className="rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">
           <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
             Game {position} of {total}
           </p>
@@ -172,10 +200,6 @@ export default function MappingStep({
             {opponent.trim() ? ` · vs ${opponent.trim()}` : ""}
           </p>
         </div>
-        <p className="text-sm text-neutral-600 dark:text-neutral-400">
-          This is a one-time setup for each game. It takes about 2–3 minutes, and once it&apos;s
-          done it&apos;s saved, so you won&apos;t need to map this game again.
-        </p>
       </div>
 
       <fieldset className="grid gap-3 sm:grid-cols-3">
@@ -224,7 +248,12 @@ export default function MappingStep({
       )}
 
       <section className="flex flex-col gap-3">
-        <h3 className="font-semibold">Jerseys Veo detected</h3>
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4">
+          <h3 className="font-semibold">Jerseys Veo detected</h3>
+          <p className="text-sm text-neutral-600 dark:text-neutral-400">
+            {jerseys.length - undecided.length} matched · {undecided.length} unassigned
+          </p>
+        </div>
         <div className="flex flex-col gap-2 text-sm">
           <p className="text-neutral-600 dark:text-neutral-400">
             Veo often misreads jersey numbers, so unmatched jerseys are likely your own players
@@ -256,6 +285,35 @@ export default function MappingStep({
           </p>
         </div>
         <ul className="flex flex-col gap-2">{orderedJerseys.map(renderJerseyRow)}</ul>
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <h3 className="font-semibold">Season minutes by player</h3>
+        <p className="text-sm text-neutral-600 dark:text-neutral-400">
+          A player far below their teammates usually has jerseys still to map. This updates as you assign them.
+        </p>
+        <ul className="flex flex-col gap-1.5 text-sm">
+          {playerMinutes.map(({ player, before, after }) => (
+            <li key={player.id} className="grid grid-cols-[minmax(0,9rem)_minmax(0,1fr)_auto] items-center gap-3">
+              <span className="truncate">
+                #{player.default_jersey} {player.name}
+              </span>
+              <span aria-hidden="true" className="h-2 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
+                <span
+                  className={`block h-full rounded-full ${after > before ? "bg-emerald-700" : "bg-emerald-900"}`}
+                  style={{ width: `${(after / mostMinutes) * 100}%` }}
+                />
+              </span>
+              <span className="whitespace-nowrap tabular-nums">
+                {after === before ? `${after} min` : (
+                  <>
+                    {before} min → <strong className="text-success">{after} min</strong>
+                  </>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
       </section>
 
       {matchedEvents.length > 0 && (
@@ -356,27 +414,13 @@ export default function MappingStep({
           {error}
         </p>
       )}
-      {undecided.length > 0 && (
-        <p className="text-sm text-neutral-600 dark:text-neutral-400">
-          To save, choose a player or skip for: {undecided.map((jersey) => `#${jersey}`).join(", ")}
-        </p>
-      )}
-
       <div className="flex flex-wrap gap-3">
         <button
           type="submit"
           className={primaryButton}
-          disabled={saving || undecided.length > 0}
-        >
-          {saving ? "Saving…" : "Save Game"}
-        </button>
-        <button
-          type="button"
-          className={secondaryButton}
           disabled={saving}
-          onClick={() => onDone("skipped")}
         >
-          Skip this game
+          {saving ? "Saving…" : "Save Changes"}
         </button>
       </div>
     </form>

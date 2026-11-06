@@ -6,7 +6,9 @@ import type {
   DashboardPlayer,
   DashboardStatRow,
   DashboardTeam,
+  GameCoverage,
 } from "@/lib/stats";
+import { detectedJerseys, type VeoPayload } from "@/lib/veo";
 
 const PAGE_SIZE = 1000;
 
@@ -21,6 +23,38 @@ async function fetchAll<T>(
     if (error) throw new Error(error.message);
     rows.push(...((data ?? []) as T[]));
     if (!data || data.length < PAGE_SIZE) return rows;
+  }
+}
+
+/**
+ * How much of each saved game's jerseys have an answer. Read separately, as it's
+ * extra information: without it the dashboard just doesn't offer mapping hints.
+ */
+export async function loadMappingCoverage(
+  supabase: SupabaseClient,
+): Promise<Record<string, GameCoverage>> {
+  try {
+    const [games, mappings] = await Promise.all([
+      fetchAll<{ id: string; veo_payload: VeoPayload | null }>((from, to) =>
+        supabase.from("games").select("id, veo_payload").order("id").range(from, to),
+      ),
+      fetchAll<{ game_id: string; detected_jersey: number }>((from, to) =>
+        supabase.from("jersey_mappings").select("game_id, detected_jersey").order("id").range(from, to),
+      ),
+    ]);
+    return Object.fromEntries(
+      games.flatMap((game) => {
+        if (!game.veo_payload) return [];
+        const jerseys = detectedJerseys(game.veo_payload);
+        const decided = new Set(
+          mappings.filter((row) => row.game_id === game.id).map((row) => row.detected_jersey),
+        );
+        const matched = jerseys.filter((jersey) => decided.has(jersey)).length;
+        return [[game.id, { matched, unassigned: jerseys.length - matched }]];
+      }),
+    );
+  } catch {
+    return {};
   }
 }
 

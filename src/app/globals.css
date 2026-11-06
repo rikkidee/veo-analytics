@@ -66,20 +66,6 @@ main :is(div, section, ul, form, fieldset).rounded-lg.border:not([class*="amber"
   border-color: #30363d;
 }
 
-/* Plays once when the next game's details appear after a save. */
-@keyframes saved-flash {
-  from {
-    background-color: rgb(16 185 129 / 0.3);
-    border-color: rgb(4 120 87);
-  }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .saved-flash {
-    animation: saved-flash 1.2s ease-out;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);

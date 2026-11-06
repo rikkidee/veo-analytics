@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import { Suspense } from "react";
+import ImportRunner from "@/components/import/ImportRunner";
 import UserMenu from "@/components/UserMenu";
 import "./globals.css";
 
@@ -41,6 +42,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             <Link href="/onboarding/games" className="hover:underline">
               Import Games
             </Link>
+            <Link href="/map-jerseys" className="hover:underline">
+              Map Jerseys
+            </Link>
             <div className="ml-auto min-w-0">
               <Suspense fallback={null}>
                 <UserMenu />
@@ -48,9 +52,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             </div>
           </nav>
         </header>
-        <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
-          {children}
-        </main>
+        <ImportRunner>
+          <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
+            {children}
+          </main>
+        </ImportRunner>
       </body>
     </html>
   );

@@ -157,7 +157,11 @@ export type DashboardCorrection = {
   event_type: string;
   value: number | null;
 };
+/** What's still unassigned in a saved game. Games saved before reports were kept aren't listed. */
+export type GameCoverage = { matched: number; unassigned: number };
+
 export type DashboardData = {
+  coverage?: Record<string, GameCoverage>;
   teams: DashboardTeam[];
   players: DashboardPlayer[];
   games: DashboardGame[];

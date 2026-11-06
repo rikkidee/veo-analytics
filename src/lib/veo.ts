@@ -54,6 +54,8 @@ export type RosterPlayer = {
   default_jersey: number;
 };
 
+const normalizeName = (name: string) => name.replace(/\s+/g, " ").trim().toLowerCase();
+
 export const NOISE = "noise";
 /** A roster player's id, NOISE, or "" while undecided. */
 export type JerseyChoice = string;
@@ -115,9 +117,40 @@ export function suggestPlayer(jersey: number, roster: RosterPlayer[]): string {
   return onePerson(roster.filter((player) => player.default_jersey === jersey)) ?? "";
 }
 
-export type EventAssignment = { type: VeoKeyEvent["type"]; playerId: string };
+/** The roster player a name from Veo means: an exact match, or one person sharing a first name. */
+function matchName(name: string, roster: RosterPlayer[]) {
+  const wanted = normalizeName(name);
+  const exact = roster.filter((player) => normalizeName(player.name) === wanted);
+  if (exact.length > 0) return onePerson(exact);
+  return onePerson(
+    roster.filter((player) => {
+      const own = normalizeName(player.name);
+      return wanted.startsWith(`${own} `) || own.startsWith(`${wanted} `);
+    }),
+  );
+}
 
-const normalizeName = (name: string) => name.replace(/\s+/g, " ").trim().toLowerCase();
+/**
+ * Who each jersey in a report belongs to, as far as can be told without asking.
+ * Earlier decisions stay, then a name from Veo, then the jersey number. Anything
+ * left is "" and stays unassigned until someone maps it.
+ */
+export function autoChoices(
+  payload: VeoPayload,
+  roster: RosterPlayer[],
+  saved: Record<number, JerseyChoice> = {},
+): Record<number, JerseyChoice> {
+  const names = new Map(payload.players.rows.map((row) => [row.jersey, row.name]));
+  return Object.fromEntries(
+    detectedJerseys(payload).map((jersey) => {
+      const name = names.get(jersey);
+      const byName = name ? matchName(name, roster) : null;
+      return [jersey, saved[jersey] || byName || suggestPlayer(jersey, roster)];
+    }),
+  );
+}
+
+export type EventAssignment = { type: VeoKeyEvent["type"]; playerId: string };
 
 /**
  * Prefers the jersey decision for the player table row with this name, so a

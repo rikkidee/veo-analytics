@@ -36,6 +36,8 @@ export type GameModel = {
   stats: Record<TeamStatName, TeamStat>;
   /** False when the saved report has no team numbers, so only player totals fill in. */
   hasTeamStats: boolean;
+  /** Jerseys in this game not assigned to anyone yet, or null if that's not known. */
+  unassignedJerseys: number | null;
 };
 
 export type StatValues = Record<string, number>;
@@ -59,6 +61,8 @@ export type PlayerModel = {
 
 export type TeamModel = {
   id: string;
+  /** People on the roster, counting any spelled two ways once. */
+  rosterSize: number;
   /** The short name beside "OPP", like "MIS". */
   ownLabel: string;
   games: GameModel[];
@@ -339,13 +343,15 @@ export function buildTeamModel(data: DashboardData, teamId: string): TeamModel {
         date: formatShortDate(game.game_date),
         opponent: game.opponent ?? names?.[swapped ? 0 : 1] ?? null,
         stats: readTeamStats(game.team_stats, swapped),
+        unassignedJerseys: data.coverage?.[game.id]?.unassigned ?? null,
         hasTeamStats: Object.entries(game.team_stats ?? {}).some(
           ([label, card]) => label !== "Score" && (card.values?.length ?? 0) >= 2,
         ),
       };
     });
 
-  const players = mergeDuplicates(data.players.filter((player) => player.team_id === teamId))
+  const roster = mergeDuplicates(data.players.filter((player) => player.team_id === teamId));
+  const players = roster
     .map(({ player, ids }) => buildPlayer(player, ids, data, games))
     .filter((player) => player.gamesPlayed > 0)
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -354,6 +360,7 @@ export function buildTeamModel(data: DashboardData, teamId: string): TeamModel {
 
   return {
     id: teamId,
+    rosterSize: roster.length,
     ownLabel: shortLabel(team),
     games,
     players,

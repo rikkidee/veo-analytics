@@ -4,33 +4,16 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { primaryButton, secondaryButton } from "@/components/import/buttons";
-import GamesStep from "@/components/import/GamesStep";
-import MappingStep from "@/components/import/MappingStep";
-import {
-  discoverGames,
-  discoverTeams,
-  pingExtension,
-  type GameResult,
-} from "@/lib/veo-extension";
+import { useImportRun } from "@/components/import/ImportRunner";
+import { discoverGames, discoverTeams, pingExtension } from "@/lib/veo-extension";
 import { reportUrl, type RosterPlayer, type VeoGame, type VeoTeam } from "@/lib/veo";
 
-type Step = 1 | 2 | 3 | 4 | 5;
-const STEP_NAMES = ["Install extension", "Connect to Veo", "Import games", "Map jerseys", "Complete"];
-const STORAGE_KEY = "veo-import-wizard-v1";
+type Step = 1 | 2 | 3;
+const STEP_NAMES = ["Install extension", "Connect to Veo", "Import your games"];
+const STORAGE_KEY = "veo-import-wizard-v2";
 const TEAM_POLL_MS = 3_000;
-const SAVED_NOTICE_MS = 3_000;
 
-type Outcome = "saved" | "skipped";
-
-type WizardState = {
-  step: Step;
-  appTeamId: string;
-  veoTeam: VeoTeam | null;
-  games: VeoGame[];
-  selected: string[];
-  results: Record<string, GameResult>;
-  outcomes: Record<string, Outcome>;
-};
+type WizardState = { step: Step; appTeamId: string; veoTeam: VeoTeam | null };
 
 export type AppTeam = { id: string; name: string };
 export type ImportedGame = { team_id: string; veo_url: string | null };
@@ -42,22 +25,11 @@ type ImportWizardProps = {
 };
 
 function initialState(teams: AppTeam[]): WizardState {
-  const fresh: WizardState = {
-    step: 1,
-    appTeamId: teams[0]?.id ?? "",
-    veoTeam: null,
-    games: [],
-    selected: [],
-    results: {},
-    outcomes: {},
-  };
+  const fresh: WizardState = { step: 1, appTeamId: teams[0]?.id ?? "", veoTeam: null };
   try {
     const stored = window.sessionStorage.getItem(STORAGE_KEY);
     if (!stored) return fresh;
     const restored = JSON.parse(stored) as WizardState;
-    // A finished import has nothing left to resume, and the completion step's only
-    // way forward is the dashboard. Imported games come back from the database.
-    if (restored.step === 5) return fresh;
     return teams.some((team) => team.id === restored.appTeamId) ? restored : fresh;
   } catch {
     return fresh;
@@ -65,20 +37,7 @@ function initialState(teams: AppTeam[]): WizardState {
 }
 
 export default function ImportWizard({ teams, roster, importedGames }: ImportWizardProps) {
-  const router = useRouter();
-  // Kept for this browser tab, so a refresh during jersey mapping doesn't lose
-  // games that took minutes to read.
   const [state, setState] = useState<WizardState>(() => initialState(teams));
-  const [gamesLoading, setGamesLoading] = useState(false);
-  const [gamesError, setGamesError] = useState<string | null>(null);
-  // When the last save happened, or 0 once its notice has gone.
-  const [savedAt, setSavedAt] = useState(0);
-
-  useEffect(() => {
-    if (!savedAt) return;
-    const timer = setTimeout(() => setSavedAt(0), SAVED_NOTICE_MS);
-    return () => clearTimeout(timer);
-  }, [savedAt]);
 
   useEffect(() => {
     try {
@@ -88,119 +47,25 @@ export default function ImportWizard({ teams, roster, importedGames }: ImportWiz
     }
   }, [state]);
 
-  const update = (changes: Partial<WizardState>) =>
-    setState((current) => ({ ...current, ...changes }));
+  const update = (changes: Partial<WizardState>) => setState((current) => ({ ...current, ...changes }));
 
-  const teamRoster = roster.filter((player) => player.team_id === state.appTeamId);
-  const importedUrls = new Set(
-    importedGames
-      .filter((game) => game.team_id === state.appTeamId)
-      .map((game) => game.veo_url),
-  );
-  const isImported = (slug: string) =>
-    importedUrls.has(reportUrl(slug)) || state.outcomes[slug] === "saved";
-
-  const mappingQueue = Object.entries(state.results)
-    .filter(([slug, result]) => result.ok && !state.outcomes[slug])
-    .map(([slug]) => slug);
-
-  // Refresh stays clickable during a read, so reads can overlap. Only the newest
-  // one counts; an older one finishing later mustn't replace its list.
-  const latestLoad = useRef(0);
-
-  async function loadGames(team: VeoTeam) {
-    latestLoad.current += 1;
-    const thisLoad = latestLoad.current;
-    setGamesLoading(true);
-    setGamesError(null);
-    try {
-      const response = await discoverGames(team);
-      if (thisLoad !== latestLoad.current) return;
-      if (!response.ok) {
-        setGamesError(response.error);
-        return;
-      }
-      setState((current) => ({
-        ...current,
-        games: response.games,
-        selected: response.games
-          .filter((game) => game.hasReport !== false && !isImported(game.slug))
-          .map((game) => game.slug),
-      }));
-      if (response.games.length === 0) {
-        setGamesError(
-          `No games were found at ${response.pageUrl}. Check that this is the team's recordings page in Veo, then try again.`,
-        );
-      }
-    } catch (cause) {
-      if (thisLoad === latestLoad.current) setGamesError((cause as Error).message);
-    } finally {
-      if (thisLoad === latestLoad.current) setGamesLoading(false);
-    }
-  }
-
-  // Reads the list whenever the games step shows without one, including after a
-  // refresh restores the wizard to this step. Only once per visit to the step: a
-  // failed or empty read shows its message and waits for Refresh,
-  // rather than reopening the Veo window in a loop.
-  const autoLoadTried = useRef(false);
-  const autoLoadGames = useEffectEvent((team: VeoTeam) => void loadGames(team));
-  const onGamesStep = state.step === 3;
-  const needsGames = onGamesStep && state.games.length === 0;
+  // Someone with the extension already installed has nothing to do on the first step.
+  // Only on arrival, so Back can still reach it.
+  const arrived = useRef(true);
+  const skipInstall = useEffectEvent(() => setState((current) => (current.step === 1 ? { ...current, step: 2 } : current)));
   useEffect(() => {
-    if (!onGamesStep) {
-      autoLoadTried.current = false;
-      return;
-    }
-    if (!needsGames || !state.veoTeam || autoLoadTried.current) return;
-    autoLoadTried.current = true;
-    autoLoadGames(state.veoTeam);
-  }, [onGamesStep, needsGames, state.veoTeam]);
-
-  function recordOutcome(slug: string, outcome: Outcome) {
-    setState((current) => {
-      const outcomes = { ...current.outcomes, [slug]: outcome };
-      const remaining = Object.entries(current.results).some(
-        ([other, result]) => result.ok && !outcomes[other],
-      );
-      return { ...current, outcomes, step: remaining ? current.step : 5 };
-    });
-    if (outcome === "saved") {
-      setSavedAt(Date.now());
-      router.refresh();
-    }
-  }
-
-  function recordResult(slug: string, result: GameResult) {
-    setState((current) => {
-      const outcomes = { ...current.outcomes };
-      delete outcomes[slug]; // A fresh read has to be reviewed again.
-      return {
-        ...current,
-        results: { ...current.results, [slug]: result },
-        outcomes,
-        // Failed games stay ticked, ready to try again.
-        selected: result.ok
-          ? current.selected.filter((other) => other !== slug)
-          : current.selected,
-      };
-    });
-  }
-
-  const currentSlug = mappingQueue[0];
-  const currentResult = currentSlug ? state.results[currentSlug] : null;
-  const gamesToMap = Object.values(state.results).filter((result) => result.ok).length;
+    if (!arrived.current) return;
+    arrived.current = false;
+    pingExtension().then(
+      (response) => {
+        if (response.ok) skipInstall();
+      },
+      () => {},
+    );
+  }, []);
 
   return (
     <div className="flex flex-col gap-6">
-      <div role="status" className="pointer-events-none fixed left-1/2 top-4 z-50 -translate-x-1/2">
-        {savedAt > 0 && (
-          <p className="whitespace-nowrap rounded-md bg-emerald-700 px-4 py-2 text-sm font-semibold text-white shadow-lg">
-            <span aria-hidden="true">✓ </span>Game saved!
-          </p>
-        )}
-      </div>
-
       <ol className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
         {STEP_NAMES.map((name, index) => {
           const number = index + 1;
@@ -227,52 +92,21 @@ export default function ImportWizard({ teams, roster, importedGames }: ImportWiz
         <ConnectStep
           teams={teams}
           appTeamId={state.appTeamId}
-          onAppTeamChange={(appTeamId) => update({ appTeamId, games: [], selected: [] })}
+          onAppTeamChange={(appTeamId) => update({ appTeamId })}
           onBack={() => update({ step: 1 })}
-          onContinue={(veoTeam) => update({ step: 3, veoTeam, games: [], selected: [] })}
+          onContinue={(veoTeam) => update({ step: 3, veoTeam })}
         />
       )}
 
-      {state.step === 3 && (
-        <GamesStep
-          games={state.games}
-          selected={state.selected}
-          results={state.results}
-          isImported={isImported}
-          loading={gamesLoading}
-          loadError={gamesError}
-          onReload={() => state.veoTeam && void loadGames(state.veoTeam)}
-          onSelectedChange={(selected) => update({ selected })}
-          onResult={recordResult}
-          pendingMappings={mappingQueue.length}
-          onBack={() => update({ step: 2 })}
-          onContinue={() => update({ step: 4 })}
-        />
-      )}
-
-      {state.step === 4 && currentSlug && currentResult?.ok && (
-        <MappingStep
-          key={currentSlug}
+      {state.step === 3 && state.veoTeam && (
+        <ImportStep
+          veoTeam={state.veoTeam}
           teamId={state.appTeamId}
-          roster={teamRoster}
-          payload={currentResult.data}
-          game={state.games.find((game) => game.slug === currentSlug) ?? null}
-          position={gamesToMap - mappingQueue.length + 1}
-          total={gamesToMap}
-          justSaved={savedAt > 0}
-          onDone={(outcome) => recordOutcome(currentSlug, outcome)}
+          roster={roster.filter((player) => player.team_id === state.appTeamId)}
+          importedUrls={importedGames.filter((game) => game.team_id === state.appTeamId).map((game) => game.veo_url)}
+          onBack={() => update({ step: 2 })}
         />
       )}
-      {state.step === 4 && !currentSlug && (
-        <div className="flex flex-col items-start gap-3">
-          <p>There are no games waiting for jersey mapping.</p>
-          <button type="button" className={secondaryButton} onClick={() => update({ step: 3 })}>
-            Back to games
-          </button>
-        </div>
-      )}
-
-      {state.step === 5 && <CompleteStep state={state} />}
     </div>
   );
 }
@@ -478,32 +312,158 @@ function ConnectStep({
           disabled={!picked}
           onClick={() => picked && onContinue(picked)}
         >
-          Continue
+          Import my games
         </button>
       </div>
     </section>
   );
 }
 
-function CompleteStep({ state }: { state: WizardState }) {
-  const outcomes = Object.values(state.outcomes);
-  const saved = outcomes.filter((outcome) => outcome === "saved").length;
-  const skipped = outcomes.length - saved;
-  const failed = Object.values(state.results).filter((result) => !result.ok).length;
+/**
+ * Finds the team's games and imports the new ones with no further questions. The
+ * dashboard opens as soon as the first is saved, and the rest keep arriving there.
+ */
+function ImportStep({
+  veoTeam,
+  teamId,
+  roster,
+  importedUrls,
+  onBack,
+}: {
+  veoTeam: VeoTeam;
+  teamId: string;
+  roster: RosterPlayer[];
+  importedUrls: (string | null)[];
+  onBack: () => void;
+}) {
+  const router = useRouter();
+  const { run, start } = useImportRun();
+  const [games, setGames] = useState<VeoGame[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [startedHere, setStartedHere] = useState(false);
+
+  const eligible = games?.filter((game) => game.hasReport !== false) ?? [];
+  const isSaved = (game: VeoGame) => importedUrls.includes(reportUrl(game.slug));
+  const newGames = eligible.filter((game) => !isSaved(game));
+
+  function begin(list: VeoGame[]) {
+    setStartedHere(true);
+    start({ teamId, games: list, roster });
+  }
+
+  async function load() {
+    setError(null);
+    setGames(null);
+    try {
+      const response = await discoverGames(veoTeam);
+      if (!response.ok) {
+        setError(response.error);
+        return;
+      }
+      setGames(response.games);
+      if (response.games.length === 0) {
+        setError(`No games were found at ${response.pageUrl}. Check that this is the team's recordings page in Veo.`);
+        return;
+      }
+      const fresh = response.games.filter((game) => game.hasReport !== false && !importedUrls.includes(reportUrl(game.slug)));
+      if (fresh.length > 0 && !run?.active) begin(fresh);
+    } catch (cause) {
+      setError((cause as Error).message);
+    }
+  }
+
+  // Once per visit: a failed read shows its message and waits, rather than
+  // reopening the Veo window in a loop.
+  const loaded = useRef(false);
+  const loadOnArrival = useEffectEvent(() => void load());
+  useEffect(() => {
+    if (loaded.current) return;
+    const timer = setTimeout(() => {
+      loaded.current = true;
+      loadOnArrival();
+    });
+    return () => clearTimeout(timer);
+  }, []);
+
+  const firstGameSaved = startedHere && (run?.saved ?? 0) > 0;
+  useEffect(() => {
+    if (firstGameSaved) router.push("/dashboard");
+  }, [firstGameSaved, router]);
+
+  const importing = Boolean(run?.active);
+  const finishedWithNothing = startedHere && run && !run.active && run.saved === 0;
 
   return (
     <section className="flex flex-col items-start gap-4">
-      <h2 className="text-lg font-semibold">Import complete</h2>
-      <ul className="text-sm">
-        <li>
-          {saved} {saved === 1 ? "game" : "games"} saved
-        </li>
-        {skipped > 0 && <li>{skipped} skipped</li>}
-        {failed > 0 && <li>{failed} could not be read from Veo</li>}
-      </ul>
-      <Link href="/dashboard" className={primaryButton}>
-        Go to Dashboard
-      </Link>
+      <h2 className="text-lg font-semibold">Importing your games</h2>
+
+      {!games && !error && (
+        <Working title="Finding your games on Veo…" detail="A small Veo window will open and close by itself." />
+      )}
+      {importing && (
+        <Working
+          title={`Reading ${run?.games.length} ${run?.games.length === 1 ? "game" : "games"} from Veo…`}
+          detail="Your dashboard opens as soon as the first one is in, usually within a minute. The rest keep coming while you look around."
+        />
+      )}
+      {error && (
+        <p role="alert" className="text-sm text-red-700 dark:text-red-400">
+          {error}
+        </p>
+      )}
+      {finishedWithNothing && (
+        <p role="alert" className="text-sm text-red-700 dark:text-red-400">
+          No games could be imported. The details are in the message at the bottom of the page.
+        </p>
+      )}
+
+      {games && !importing && !finishedWithNothing && newGames.length === 0 && eligible.length > 0 && (
+        <>
+          <p className="text-sm">
+            <span aria-hidden="true" className="text-success">✓ </span>
+            All {eligible.length} {eligible.length === 1 ? "game is" : "games are"} already imported.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <Link href="/dashboard" className={primaryButton}>
+              Go to Dashboard
+            </Link>
+            <button type="button" className={secondaryButton} onClick={() => begin(eligible)}>
+              Import all {eligible.length} again
+            </button>
+          </div>
+          <p className="text-sm text-neutral-600 dark:text-neutral-400">
+            Importing again refreshes each game&apos;s stats from Veo and keeps your jersey assignments.
+          </p>
+        </>
+      )}
+
+      {!importing && (
+        <div className="flex flex-wrap gap-3">
+          <button type="button" className={secondaryButton} onClick={onBack}>
+            Back
+          </button>
+          {(error || finishedWithNothing) && (
+            <button type="button" className={primaryButton} onClick={() => void load()}>
+              Try again
+            </button>
+          )}
+        </div>
+      )}
     </section>
+  );
+}
+
+function Working({ title, detail }: { title: string; detail: string }) {
+  return (
+    <div role="status" className="flex items-start gap-3 text-sm">
+      <span
+        aria-hidden="true"
+        className="mt-0.5 size-4 shrink-0 animate-spin rounded-full border-2 border-neutral-300 border-t-emerald-700 motion-reduce:animate-none dark:border-neutral-700 dark:border-t-emerald-400"
+      />
+      <span>
+        <span className="block font-medium">{title}</span>
+        <span className="block text-neutral-600 dark:text-neutral-400">{detail}</span>
+      </span>
+    </div>
   );
 }

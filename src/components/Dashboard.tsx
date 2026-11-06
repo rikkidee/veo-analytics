@@ -27,8 +27,18 @@ type Tab = (typeof TABS)[number][0];
 function TeamContent({ team, tab }: { team: TeamModel; tab: Tab }) {
   const panel = (name: Tab) => (tab === name ? undefined : "hidden");
   const auto = useAutoReports(team);
+  const gamesToMap = team.games.filter((game) => (game.unassignedJerseys ?? 0) > 0).length;
   return (
     <>
+      {gamesToMap > 0 && (
+        <div className="mapping-banner">
+          <p>
+            We auto-matched {team.players.length} of {team.rosterSize} players across {team.games.length}{" "}
+            {team.games.length === 1 ? "game" : "games"}. Some player stats may be incomplete.
+          </p>
+          <Link href="/map-jerseys">Complete jersey mapping for full accuracy →</Link>
+        </div>
+      )}
       {auto.status && (
         <p role="status" className="generate-status">
           {auto.status}

@@ -38,6 +38,8 @@ CREATE TABLE games (
   opponent TEXT,
   veo_url TEXT,
   team_stats JSONB DEFAULT '{}',
+  -- The Veo report as it was read, so a saved game can be re-mapped.
+  veo_payload JSONB,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -67,6 +69,8 @@ CREATE TABLE event_corrections (
   player_id UUID REFERENCES players(id),
   event_type TEXT NOT NULL,
   value INTEGER DEFAULT 1,
+  -- Which key event in games.veo_payload a hand assignment came from.
+  event_index INTEGER,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

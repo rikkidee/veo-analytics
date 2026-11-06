@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useImportRun } from "@/components/import/ImportRunner";
 import type { PlayerModel, TeamModel } from "@/lib/dashboard";
 
 export type SavedReport = Pick<PlayerModel, "nickname" | "report" | "strengths" | "develop">;
@@ -59,6 +60,9 @@ const AFFECTS_EVERYTHING = new Set([0, 401, 429, 503]);
  */
 export function useAutoReports(team: TeamModel) {
   const router = useRouter();
+  // Reports written mid-import would judge players on a game or two, and they don't
+  // regenerate by themselves, so this waits until every game is in.
+  const { busy: importing } = useImportRun();
   const [reports, setReports] = useState<Record<string, SavedReport>>({});
   const [teamAnalysis, setTeamAnalysis] = useState<string | null>(null);
   const [progress, setProgress] = useState(() => {
@@ -73,7 +77,7 @@ export function useAutoReports(team: TeamModel) {
   const started = useRef(false);
 
   const start = useEffectEvent(async () => {
-    if (started.current || !team.hasMinutes) return;
+    if (started.current || importing || !team.hasMinutes) return;
     started.current = true;
 
     const missing = team.players.filter((player) => !hasReport(player));
@@ -126,7 +130,7 @@ export function useAutoReports(team: TeamModel) {
   useEffect(() => {
     const timer = setTimeout(() => void start());
     return () => clearTimeout(timer);
-  }, []);
+  }, [importing]);
 
   return {
     reports,

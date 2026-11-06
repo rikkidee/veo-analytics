@@ -52,7 +52,7 @@ export default function OnboardingGamesPage() {
       <div>
         <h1 className="text-2xl font-bold">Import games</h1>
         <p className="mt-1 text-neutral-600 dark:text-neutral-400">
-          Bring your match reports over from Veo with the Chrome extension.
+          Connect the Chrome extension and your games come in by themselves.
         </p>
       </div>
       <Suspense fallback={<div className="h-64" aria-busy="true" />}>

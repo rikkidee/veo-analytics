@@ -3,7 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import DashboardLoader from "@/components/DashboardLoader";
-import { loadDashboardData } from "@/lib/dashboard-data";
+import { loadDashboardData, loadMappingCoverage } from "@/lib/dashboard-data";
 import type { DashboardData } from "@/lib/stats";
 import { createClient, getCurrentUser } from "@/lib/supabase/server";
 
@@ -14,7 +14,9 @@ async function SignedInDashboard() {
 
   let data: DashboardData;
   try {
-    data = await loadDashboardData(await createClient());
+    const supabase = await createClient();
+    const [loaded, coverage] = await Promise.all([loadDashboardData(supabase), loadMappingCoverage(supabase)]);
+    data = { ...loaded, coverage };
   } catch (cause) {
     return (
       <p role="alert" className="text-sm text-red-700 dark:text-red-400">
