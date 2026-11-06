@@ -1,11 +1,10 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { secondaryButton } from "@/components/import/buttons";
-import MappingStep from "@/components/import/MappingStep";
-import { describeSaveError, loadSavedGame, type SavedGame } from "@/lib/games";
+import MappingStep, { type MappingPreview, type SaveState } from "@/components/import/MappingStep";
+import { PanelLink } from "@/components/panels/links";
+import { afterPendingWrites, describeSaveError, loadSavedGame, type SavedGame } from "@/lib/games";
 import { getSupabase } from "@/lib/supabase/client";
 import type { RosterPlayer } from "@/lib/veo";
 
@@ -20,62 +19,62 @@ type SavedGameMapperProps = {
   roster: RosterPlayer[];
   /** Each player's saved minutes, by game. */
   seasonMinutes: Record<string, Record<string, number>>;
+  /** Shown between the game selector and the game. */
+  intro: ReactNode;
+  /** A change the dashboard can show ahead of it being saved. */
+  onPreview: (gameId: string, preview: MappingPreview) => void;
+  onSaved: (gameId: string, version: string) => void;
 };
 
-export default function SavedGameMapper({ games, roster, seasonMinutes }: SavedGameMapperProps) {
-  const router = useRouter();
+export default function SavedGameMapper({ games, roster, seasonMinutes, intro, onPreview, onSaved }: SavedGameMapperProps) {
   const [chosenId, setChosenId] = useState(() => (games.find((game) => (game.unassigned ?? 0) > 0) ?? games[0]).id);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
-  const [savedAt, setSavedAt] = useState(0);
-  const hasEdits = useRef(false);
+  const [saveState, setSaveState] = useState<SaveState>("idle");
 
   const index = Math.max(0, games.findIndex((game) => game.id === chosenId));
   const currentId = games[index].id;
   const current = loaded?.id === currentId ? loaded : null;
 
-  // Read fresh on each visit to a game, so going back shows what was last saved.
+  // Read fresh on each visit to a game, so going back shows what was last saved,
+  // including a change still saving from just before moving on.
   useEffect(() => {
     let stale = false;
-    loadSavedGame(getSupabase(), currentId).then(
-      (game) => {
-        if (!stale) setLoaded({ id: currentId, game, error: null });
-      },
-      (cause) => {
-        if (!stale) setLoaded({ id: currentId, game: null, error: describeSaveError(cause) });
-      },
-    );
+    afterPendingWrites()
+      .then(() => loadSavedGame(getSupabase(), currentId))
+      .then(
+        (game) => {
+          if (!stale) setLoaded({ id: currentId, game, error: null });
+        },
+        (cause) => {
+          if (!stale) setLoaded({ id: currentId, game: null, error: describeSaveError(cause) });
+        },
+      );
     return () => {
       stale = true;
     };
   }, [currentId]);
 
   useEffect(() => {
-    if (!savedAt) return;
-    const timer = setTimeout(() => setSavedAt(0), SAVED_NOTICE_MS);
+    if (saveState !== "saved") return;
+    const timer = setTimeout(() => setSaveState("idle"), SAVED_NOTICE_MS);
     return () => clearTimeout(timer);
-  }, [savedAt]);
-
-  function goTo(id: string) {
-    if (hasEdits.current && !window.confirm("Discard your unsaved changes to this game?")) return;
-    hasEdits.current = false;
-    setChosenId(id);
-  }
+  }, [saveState]);
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 bg-[var(--background)] py-2">
+      <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 bg-[#0d1117] py-2">
         <button
           type="button"
           className={secondaryButton}
           disabled={index === 0}
-          onClick={() => goTo(games[index - 1].id)}
+          onClick={() => setChosenId(games[index - 1].id)}
         >
           <span aria-hidden="true">← </span>Previous
         </button>
         <select
           aria-label="Saved game"
           value={currentId}
-          onChange={(event) => goTo(event.target.value)}
+          onChange={(event) => setChosenId(event.target.value)}
           className="order-last min-w-0 basis-full rounded-md border border-neutral-300 bg-transparent p-2 text-sm sm:order-none sm:flex-1 sm:basis-0 dark:border-neutral-700"
         >
           {games.map((game) => (
@@ -89,18 +88,30 @@ export default function SavedGameMapper({ games, roster, seasonMinutes }: SavedG
           type="button"
           className={secondaryButton}
           disabled={index === games.length - 1}
-          onClick={() => goTo(games[index + 1].id)}
+          onClick={() => setChosenId(games[index + 1].id)}
         >
           Next<span aria-hidden="true"> →</span>
         </button>
-        <div role="status" aria-live="polite">
-          {savedAt > 0 && (
-            <p className="whitespace-nowrap rounded-md bg-emerald-700 px-4 py-2 text-sm font-semibold text-white">
-              <span aria-hidden="true">✓ </span>Changes saved!
+        <div role="status" aria-live="polite" className="basis-full text-sm empty:hidden">
+          {saveState === "saving" && <p className="text-neutral-400">Saving…</p>}
+          {saveState === "saved" && (
+            <p className="font-medium text-success">
+              <span aria-hidden="true">✓ </span>Saved. Your dashboard is up to date.
             </p>
           )}
         </div>
       </div>
+
+      {typeof saveState === "object" && (
+        <div role="alert" className="flex flex-wrap items-center gap-3 text-sm text-red-700 dark:text-red-400">
+          <p>A change wasn&apos;t saved: {saveState.error}</p>
+          <button type="button" className={secondaryButton} onClick={saveState.retry}>
+            Try again
+          </button>
+        </div>
+      )}
+
+      {intro}
 
       {!current && <p className="text-sm text-neutral-600 dark:text-neutral-400">Loading game…</p>}
       {current?.error && (
@@ -114,12 +125,9 @@ export default function SavedGameMapper({ games, roster, seasonMinutes }: SavedG
           <p className="mt-1 text-neutral-600 dark:text-neutral-400">
             This game was saved before jersey details were kept, so it can&apos;t be edited here
             yet.{" "}
-            <Link
-              href="/onboarding/games"
-              className="font-medium text-emerald-700 underline dark:text-emerald-400"
-            >
+            <PanelLink panel="import" className="font-medium text-emerald-700 underline dark:text-emerald-400">
               Import it once more
-            </Link>{" "}
+            </PanelLink>{" "}
             to replace it, and you&apos;ll be able to edit it here from then on.
           </p>
         </div>
@@ -142,14 +150,9 @@ export default function SavedGameMapper({ games, roster, seasonMinutes }: SavedG
           total={games.length}
           seasonMinutes={seasonMinutes}
           saved={{ choices: current.game.choices, eventChoices: current.game.eventChoices }}
-          onEdit={() => {
-            hasEdits.current = true;
-          }}
-          onSaved={() => {
-            hasEdits.current = false;
-            setSavedAt(Date.now());
-            router.refresh();
-          }}
+          onPreview={(preview) => onPreview(currentId, preview)}
+          onSaveState={setSaveState}
+          onSaved={(version) => onSaved(currentId, version)}
         />
       )}
     </div>

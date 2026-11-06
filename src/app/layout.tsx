@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import { Suspense } from "react";
+import AppNav from "@/components/AppNav";
 import ImportRunner from "@/components/import/ImportRunner";
-import UserMenu from "@/components/UserMenu";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -28,28 +28,17 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <header className="border-b border-neutral-200 dark:border-neutral-800">
-          <nav className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3 text-sm">
-            <Link href="/" className="font-semibold">
-              Veo Analytics
-            </Link>
-            <Link href="/dashboard" className="hover:underline">
-              Dashboard
-            </Link>
-            <Link href="/onboarding" className="hover:underline">
-              Roster
-            </Link>
-            <Link href="/onboarding/games" className="hover:underline">
-              Import Games
-            </Link>
-            <Link href="/map-jerseys" className="hover:underline">
-              Map Jerseys
-            </Link>
-            <div className="ml-auto min-w-0">
-              <Suspense fallback={null}>
-                <UserMenu />
-              </Suspense>
-            </div>
+        <header className="sticky top-0 z-40 border-b border-neutral-800 bg-[#0d1117]">
+          <nav className="flex h-14 items-center gap-1 overflow-x-auto px-4 text-sm [scrollbar-width:none]">
+            <Suspense
+              fallback={
+                <Link href="/" className="font-semibold text-neutral-100">
+                  Veo Analytics
+                </Link>
+              }
+            >
+              <AppNav />
+            </Suspense>
           </nav>
         </header>
         <ImportRunner>

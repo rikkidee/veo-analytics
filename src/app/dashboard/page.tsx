@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import DashboardLoader from "@/components/DashboardLoader";
@@ -10,7 +9,8 @@ import { createClient, getCurrentUser } from "@/lib/supabase/server";
 export const metadata: Metadata = { title: "Dashboard | Veo Analytics" };
 
 async function SignedInDashboard() {
-  if (!(await getCurrentUser())) redirect("/auth");
+  const user = await getCurrentUser();
+  if (!user) redirect("/auth");
 
   let data: DashboardData;
   try {
@@ -25,17 +25,7 @@ async function SignedInDashboard() {
     );
   }
 
-  if (data.teams.length === 0) {
-    return (
-      <p>
-        Add your team first.{" "}
-        <Link href="/onboarding" className="font-medium text-emerald-700 underline dark:text-emerald-400">
-          Set up your roster
-        </Link>
-      </p>
-    );
-  }
-  return <DashboardLoader data={data} />;
+  return <DashboardLoader data={data} email={user.email} />;
 }
 
 export default function DashboardPage() {

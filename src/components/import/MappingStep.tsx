@@ -1,18 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import { primaryButton } from "@/components/import/buttons";
-import { describeSaveError, saveGame } from "@/lib/games";
+import { useEffect, useEffectEvent, useRef, useState, type FormEvent } from "react";
+import { describeSaveError, saveGame, type SaveGameInput } from "@/lib/games";
+import type { GamePreview } from "@/lib/stats";
 import { getSupabase } from "@/lib/supabase/client";
 import {
   attributeEvents,
+  buildPlayerStats,
   creditsForMatchedEvents,
   detectedJerseys,
   eventVideoUrl,
   matchVideoUrl,
   minutesByJersey,
   NOISE,
-  suggestPlayer,
   type RosterPlayer,
   type VeoGame,
   type VeoPayload,
@@ -22,6 +22,13 @@ const selectClass =
   "min-w-0 flex-1 rounded-md border border-neutral-300 bg-transparent p-2 text-sm sm:max-w-xs dark:border-neutral-700";
 const inputClass =
   "w-full min-w-0 rounded-md border border-neutral-300 bg-transparent p-2 text-sm dark:border-neutral-700";
+
+// Long enough to pick several jerseys in a row or finish typing without a save for each.
+const SAVE_DELAY_MS = 700;
+
+export type MappingPreview = Omit<GamePreview, "saved">;
+/** `retry` keeps working after moving on to another game. */
+export type SaveState = "idle" | "saving" | "saved" | { error: string; retry: () => void };
 
 type MappingStepProps = {
   teamId: string;
@@ -35,9 +42,11 @@ type MappingStepProps = {
   saved: { choices: Record<number, string>; eventChoices: Record<number, string> };
   /** Each player's saved minutes, by game. */
   seasonMinutes: Record<string, Record<string, number>>;
-  /** Called when the user changes anything on the form. */
-  onEdit: () => void;
-  onSaved: () => void;
+  /** Called as soon as anything changes, ahead of it being saved. */
+  onPreview: (preview: MappingPreview) => void;
+  onSaveState: (state: SaveState) => void;
+  /** Called with the version that reached the database. */
+  onSaved: (version: string) => void;
 };
 
 // Dates are plain calendar days, so UTC keeps them from shifting across time zones.
@@ -69,7 +78,8 @@ export default function MappingStep({
   total,
   saved,
   seasonMinutes,
-  onEdit,
+  onPreview,
+  onSaveState,
   onSaved,
 }: MappingStepProps) {
   const jerseys = detectedJerseys(payload);
@@ -80,24 +90,21 @@ export default function MappingStep({
   const [opponent, setOpponent] = useState(game?.opponent ?? "");
   const [overrides, setOverrides] = useState<Record<number, string>>(saved.choices);
   const [eventChoices, setEventChoices] = useState<Record<number, string>>(saved.eventChoices);
-  // What's saved, which the minutes comparison measures from.
-  const [savedChoices, setSavedChoices] = useState(saved.choices);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // How the game was when opened. The minutes comparison measures from it and rows are
+  // ordered by it, so a row doesn't jump while it's being changed.
+  const [savedChoices] = useState(saved.choices);
 
-  // Saving happens at the bottom of a long page. Each game mounts fresh, so this
-  // brings the next one into view and moves focus off the button that just went.
+  // Each game mounts fresh, so this brings the next one into view from the arrows.
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     heading.current?.focus({ preventScroll: true });
-    window.scrollTo(0, 0);
+    heading.current?.closest("[data-panel-scroll]")?.scrollTo(0, 0);
   }, []);
 
   const choices = Object.fromEntries(
-    jerseys.map((jersey) => [jersey, overrides[jersey] ?? suggestPlayer(jersey, roster)]),
+    jerseys.map((jersey) => [jersey, overrides[jersey] ?? ""]),
   );
-  // Unassigned jerseys come first. Sorted by what's saved rather than the current
-  // choice, so a row doesn't jump while it's being changed.
+  // Unassigned jerseys come first.
   const orderedJerseys = [
     ...jerseys.filter((jersey) => !savedChoices[jersey]),
     ...jerseys.filter((jersey) => savedChoices[jersey]),
@@ -156,37 +163,90 @@ export default function MappingStep({
     );
   }
 
-  async function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    setSaving(true);
-    setError(null);
-    try {
-      await saveGame(getSupabase(), {
-        teamId,
-        payload,
-        label,
-        date,
-        opponent,
-        roster,
-        choices,
-        eventAssignments: [
-          ...creditsForMatchedEvents(payload, matchedEvents, choices),
-          ...events.flatMap(({ event: keyEvent, index }) =>
-            eventChoices[index] ? [{ type: keyEvent.type, playerId: eventChoices[index], eventIndex: index }] : [],
-          ),
-        ],
-      });
-      setSavedChoices(choices);
-      onSaved();
-    } catch (cause) {
-      setError(describeSaveError(cause));
-    } finally {
-      setSaving(false);
+  // Everything saves by itself, and what the dashboard shows changes straight away.
+  const eventAssignments: SaveGameInput["eventAssignments"] = [
+    ...creditsForMatchedEvents(payload, matchedEvents, choices),
+    ...events.flatMap(({ event: keyEvent, index }) =>
+      eventChoices[index] ? [{ type: keyEvent.type, playerId: eventChoices[index], eventIndex: index }] : [],
+    ),
+  ];
+  const version = JSON.stringify({ label, date, opponent, choices, eventChoices });
+  const canSave = Boolean(label.trim() && date);
+
+  // The last version handed to a save, and the last one that finished.
+  const sent = useRef(version);
+  const confirmed = useRef(version);
+  const previewed = useRef(version);
+  const pending = useRef<{ version: string; input: SaveGameInput } | null>(null);
+
+  function persist(next: { version: string; input: SaveGameInput }) {
+    sent.current = next.version;
+    onSaveState("saving");
+    saveGame(getSupabase(), next.input).then(
+      () => {
+        confirmed.current = next.version;
+        if (sent.current === next.version) onSaveState("saved");
+        onSaved(next.version);
+      },
+      (cause) => {
+        if (sent.current !== next.version) return; // A newer version is on its way and replaces this.
+        sent.current = confirmed.current;
+        onSaveState({ error: describeSaveError(cause), retry: () => persist(next) });
+      },
+    );
+  }
+
+  const changed = useEffectEvent(() => {
+    if (!canSave) {
+      pending.current = null;
+      return undefined;
     }
+    const next = {
+      version,
+      input: { teamId, payload, label, date, opponent, roster, choices, eventAssignments },
+    };
+    pending.current = next;
+    if (version === previewed.current) return undefined;
+    previewed.current = version;
+    onPreview({
+      version,
+      stats: buildPlayerStats(payload, choices, roster).map(({ player_id, stats }) => ({ player_id, stats })),
+      corrections: eventAssignments.map(({ type, playerId }) => ({ player_id: playerId, event_type: type })),
+      coverage: { matched: jerseys.length - undecided.length, unassigned: undecided.length },
+      details: { game_label: label.trim(), game_date: date, opponent: opponent.trim() || null },
+    });
+    // Changed back to what's already saved, so there's nothing to write.
+    if (version === sent.current) {
+      if (version === confirmed.current) onSaved(version);
+      return undefined;
+    }
+    const timer = setTimeout(() => persist(next), SAVE_DELAY_MS);
+    return () => clearTimeout(timer);
+  });
+  useEffect(() => changed(), [version, canSave]);
+
+  // Moving to another game, or closing the panel, doesn't wait out the delay.
+  function flush() {
+    if (pending.current && pending.current.version !== sent.current) persist(pending.current);
+  }
+  const flushOnLeaving = useEffectEvent(flush);
+  useEffect(() => () => flushOnLeaving(), []);
+
+  useEffect(() => {
+    function warnIfUnsaved(event: BeforeUnloadEvent) {
+      if (pending.current && pending.current.version !== confirmed.current) event.preventDefault();
+    }
+    window.addEventListener("beforeunload", warnIfUnsaved);
+    return () => window.removeEventListener("beforeunload", warnIfUnsaved);
+  }, []);
+
+  function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    flush();
   }
 
   return (
-    <form onSubmit={handleSubmit} onChange={onEdit} className="flex flex-col gap-6">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-6">
       <div className="flex flex-col gap-3">
         <div className="rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">
           <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
@@ -199,6 +259,11 @@ export default function MappingStep({
             {formatGameDate(date) ?? "Date needed"}
             {opponent.trim() ? ` · vs ${opponent.trim()}` : ""}
           </p>
+          {!canSave && (
+            <p role="alert" className="mt-2 text-sm text-amber-400">
+              Add a name and date and your changes will save.
+            </p>
+          )}
         </div>
       </div>
 
@@ -409,20 +474,6 @@ export default function MappingStep({
         </section>
       )}
 
-      {error && (
-        <p role="alert" className="text-sm text-red-700 dark:text-red-400">
-          {error}
-        </p>
-      )}
-      <div className="flex flex-wrap gap-3">
-        <button
-          type="submit"
-          className={primaryButton}
-          disabled={saving}
-        >
-          {saving ? "Saving…" : "Save Changes"}
-        </button>
-      </div>
     </form>
   );
 }

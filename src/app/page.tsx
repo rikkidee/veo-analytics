@@ -11,7 +11,7 @@ export default function Home() {
         misdetected jerseys, and track every player across every game.
       </p>
       <Link
-        href="/onboarding"
+        href="/dashboard"
         className="rounded-md bg-emerald-700 px-5 py-3 font-semibold text-white hover:bg-emerald-800"
       >
         Get Started

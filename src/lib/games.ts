@@ -65,14 +65,31 @@ export async function loadSavedGame(supabase: SupabaseClient, gameId: string): P
   };
 }
 
+// A save replaces a game's rows over several requests, so two at once could interleave.
+// Mapping saves as people click, and an import can be saving at the same time.
+let writes: Promise<unknown> = Promise.resolve();
+
+function inTurn<T>(work: () => Promise<T>) {
+  const result = writes.then(work);
+  writes = result.catch(() => {});
+  return result;
+}
+
+/** Resolves once saves already started are done, so a read sees what they wrote. */
+export const afterPendingWrites = () => writes;
+
 /**
  * Writes one game and everything under it. A game already imported from the same
  * Veo report is replaced, so importing twice can't double a player's numbers.
  *
  * These are separate requests, not a transaction. If one fails, the error reaches
- * the wizard, which keeps its data, and saving again rewrites the game cleanly.
+ * the caller, and saving again rewrites the game cleanly.
  */
-export async function saveGame(supabase: SupabaseClient, input: SaveGameInput) {
+export function saveGame(supabase: SupabaseClient, input: SaveGameInput) {
+  return inTurn(() => writeGame(supabase, input));
+}
+
+async function writeGame(supabase: SupabaseClient, input: SaveGameInput) {
   const { teamId, payload, roster, choices, eventAssignments } = input;
 
   const fields = {
@@ -149,7 +166,15 @@ export async function saveGame(supabase: SupabaseClient, input: SaveGameInput) {
  * Saves a report without asking anything, leaving jerseys it can't place unassigned.
  * Importing a saved game again keeps what people decided or edited on it.
  */
-export async function autoSaveGame(
+export function autoSaveGame(
+  supabase: SupabaseClient,
+  input: { teamId: string; payload: VeoPayload; game: VeoGame | null; roster: RosterPlayer[] },
+) {
+  // In one turn, so a mapping change can't land between reading and rewriting the game.
+  return inTurn(() => autoWriteGame(supabase, input));
+}
+
+async function autoWriteGame(
   supabase: SupabaseClient,
   input: { teamId: string; payload: VeoPayload; game: VeoGame | null; roster: RosterPlayer[] },
 ) {
@@ -165,7 +190,7 @@ export async function autoSaveGame(
 
   const choices = autoChoices(payload, roster, saved?.choices);
   const { matched, unassigned } = attributeEvents(payload, choices, roster);
-  await saveGame(supabase, {
+  await writeGame(supabase, {
     teamId,
     payload,
     roster,

@@ -1,7 +1,5 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { primaryButton, secondaryButton } from "@/components/import/buttons";
 import { useImportRun } from "@/components/import/ImportRunner";
@@ -10,40 +8,46 @@ import { reportUrl, type RosterPlayer, type VeoGame, type VeoTeam } from "@/lib/
 
 type Step = 1 | 2 | 3;
 const STEP_NAMES = ["Install extension", "Connect to Veo", "Import your games"];
-const STORAGE_KEY = "veo-import-wizard-v2";
+const STORAGE_KEY = "veo-import-wizard-v3";
 const TEAM_POLL_MS = 3_000;
 
 type WizardState = { step: Step; appTeamId: string; veoTeam: VeoTeam | null };
 
 export type AppTeam = { id: string; name: string };
-export type ImportedGame = { team_id: string; veo_url: string | null };
 
 type ImportWizardProps = {
-  teams: AppTeam[];
+  /** The team on screen, which the games go into. */
+  team: AppTeam;
   roster: RosterPlayer[];
-  importedGames: ImportedGame[];
+  importedUrls: (string | null | undefined)[];
+  /** Called when the first game is in, so the dashboard can show it. */
+  onFirstGameSaved: () => void;
+  onClose: () => void;
 };
 
-function initialState(teams: AppTeam[]): WizardState {
-  const fresh: WizardState = { step: 1, appTeamId: teams[0]?.id ?? "", veoTeam: null };
+function initialState(teamId: string): WizardState {
+  const fresh: WizardState = { step: 1, appTeamId: teamId, veoTeam: null };
   try {
     const stored = window.sessionStorage.getItem(STORAGE_KEY);
     if (!stored) return fresh;
     const restored = JSON.parse(stored) as WizardState;
-    return teams.some((team) => team.id === restored.appTeamId) ? restored : fresh;
+    if (restored.appTeamId !== teamId) return fresh;
+    // Opening this panel shouldn't start reading from Veo until someone asks.
+    return { ...restored, step: restored.step === 3 ? 2 : restored.step };
   } catch {
     return fresh;
   }
 }
 
-export default function ImportWizard({ teams, roster, importedGames }: ImportWizardProps) {
-  const [state, setState] = useState<WizardState>(() => initialState(teams));
+export default function ImportWizard({ team, roster, importedUrls, onFirstGameSaved, onClose }: ImportWizardProps) {
+  const { run } = useImportRun();
+  const [state, setState] = useState<WizardState>(() => initialState(team.id));
 
   useEffect(() => {
     try {
       window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch {
-      // Storage full or blocked: the wizard still works, it just can't survive a refresh.
+      // Storage full or blocked: this still works, it just can't survive a refresh.
     }
   }, [state]);
 
@@ -63,6 +67,16 @@ export default function ImportWizard({ teams, roster, importedGames }: ImportWiz
       () => {},
     );
   }, []);
+
+  // Came back while an import started earlier is still going.
+  if (run?.active && state.step !== 3) {
+    return (
+      <Working
+        title={`Reading ${run.games.length} ${run.games.length === 1 ? "game" : "games"} from Veo…`}
+        detail="Each one appears on your dashboard as soon as it's saved, and you can close this panel while they come in."
+      />
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -90,9 +104,8 @@ export default function ImportWizard({ teams, roster, importedGames }: ImportWiz
 
       {state.step === 2 && (
         <ConnectStep
-          teams={teams}
-          appTeamId={state.appTeamId}
-          onAppTeamChange={(appTeamId) => update({ appTeamId })}
+          team={team}
+          remembered={state.veoTeam}
           onBack={() => update({ step: 1 })}
           onContinue={(veoTeam) => update({ step: 3, veoTeam })}
         />
@@ -101,9 +114,11 @@ export default function ImportWizard({ teams, roster, importedGames }: ImportWiz
       {state.step === 3 && state.veoTeam && (
         <ImportStep
           veoTeam={state.veoTeam}
-          teamId={state.appTeamId}
-          roster={roster.filter((player) => player.team_id === state.appTeamId)}
-          importedUrls={importedGames.filter((game) => game.team_id === state.appTeamId).map((game) => game.veo_url)}
+          teamId={team.id}
+          roster={roster}
+          importedUrls={importedUrls}
+          onFirstGameSaved={onFirstGameSaved}
+          onClose={onClose}
           onBack={() => update({ step: 2 })}
         />
       )}
@@ -178,15 +193,14 @@ function InstallStep({ onContinue }: { onContinue: () => void }) {
 }
 
 function ConnectStep({
-  teams,
-  appTeamId,
-  onAppTeamChange,
+  team,
+  remembered,
   onBack,
   onContinue,
 }: {
-  teams: AppTeam[];
-  appTeamId: string;
-  onAppTeamChange: (teamId: string) => void;
+  team: AppTeam;
+  /** The Veo team used last time in this session, which doesn't need Veo open again. */
+  remembered: VeoTeam | null;
   onBack: () => void;
   onContinue: (team: VeoTeam) => void;
 }) {
@@ -222,7 +236,7 @@ function ConnectStep({
     };
   }, []);
 
-  const found = discovery.teams;
+  const found = discovery.teams.length > 0 ? discovery.teams : remembered ? [remembered] : [];
   const picked =
     found.find((team) => team.id === pickedId) ?? (found.length === 1 ? found[0] : null);
 
@@ -252,10 +266,10 @@ function ConnectStep({
 
       <p role="status" className="text-sm text-neutral-600 dark:text-neutral-400">
         {error ??
-          (!discovery.veoOpen
-            ? "Waiting for a Veo tab…"
-            : found.length > 0
-              ? `Found ${found.length} ${found.length === 1 ? "team" : "teams"} on Veo.`
+          (found.length > 0
+            ? `Found ${found.length} ${found.length === 1 ? "team" : "teams"} on Veo.`
+            : !discovery.veoOpen
+              ? "Waiting for a Veo tab…"
               : discovery.onClubPage
                 ? "Reading your teams from Veo…"
                 : "Veo is open. Go to your club page so your teams can be read.")}
@@ -285,22 +299,9 @@ function ConnectStep({
         </p>
       )}
 
-      {teams.length > 1 && (
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium">Import into which roster?</span>
-          <select
-            value={appTeamId}
-            onChange={(event) => onAppTeamChange(event.target.value)}
-            className="rounded-md border border-neutral-300 bg-transparent p-2 dark:border-neutral-700"
-          >
-            {teams.map((team) => (
-              <option key={team.id} value={team.id}>
-                {team.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
+      <p className="text-sm text-neutral-600 dark:text-neutral-400">
+        Games go into <strong className="font-semibold text-neutral-100">{team.name}</strong>, the team on your dashboard.
+      </p>
 
       <div className="flex gap-3">
         <button type="button" className={secondaryButton} onClick={onBack}>
@@ -328,15 +329,18 @@ function ImportStep({
   teamId,
   roster,
   importedUrls,
+  onFirstGameSaved,
+  onClose,
   onBack,
 }: {
   veoTeam: VeoTeam;
   teamId: string;
   roster: RosterPlayer[];
-  importedUrls: (string | null)[];
+  importedUrls: (string | null | undefined)[];
+  onFirstGameSaved: () => void;
+  onClose: () => void;
   onBack: () => void;
 }) {
-  const router = useRouter();
   const { run, start } = useImportRun();
   const [games, setGames] = useState<VeoGame[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -386,9 +390,10 @@ function ImportStep({
   }, []);
 
   const firstGameSaved = startedHere && (run?.saved ?? 0) > 0;
+  const announceFirstGame = useEffectEvent(onFirstGameSaved);
   useEffect(() => {
-    if (firstGameSaved) router.push("/dashboard");
-  }, [firstGameSaved, router]);
+    if (firstGameSaved) announceFirstGame();
+  }, [firstGameSaved]);
 
   const importing = Boolean(run?.active);
   const finishedWithNothing = startedHere && run && !run.active && run.saved === 0;
@@ -403,7 +408,7 @@ function ImportStep({
       {importing && (
         <Working
           title={`Reading ${run?.games.length} ${run?.games.length === 1 ? "game" : "games"} from Veo…`}
-          detail="Your dashboard opens as soon as the first one is in, usually within a minute. The rest keep coming while you look around."
+          detail="This panel closes as soon as the first one is in, usually within a minute, so you can see your dashboard. The rest keep coming while you look around."
         />
       )}
       {error && (
@@ -424,9 +429,9 @@ function ImportStep({
             All {eligible.length} {eligible.length === 1 ? "game is" : "games are"} already imported.
           </p>
           <div className="flex flex-wrap gap-3">
-            <Link href="/dashboard" className={primaryButton}>
-              Go to Dashboard
-            </Link>
+            <button type="button" className={primaryButton} onClick={onClose}>
+              Back to Dashboard
+            </button>
             <button type="button" className={secondaryButton} onClick={() => begin(eligible)}>
               Import all {eligible.length} again
             </button>

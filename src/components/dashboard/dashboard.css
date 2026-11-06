@@ -5,7 +5,9 @@ body[data-dashboard] {
 
 .veo-dash {
   position: relative;
+  container-type: inline-size;
   width: 100vw;
+  min-height: calc(100vh - 3.5rem);
   margin: -2rem 0 -2rem calc(50% - 50vw);
   background: #0a0e17;
   color: #e0e6ed;
@@ -68,6 +70,12 @@ body[data-dashboard] {
   a { color: #58a6ff; text-decoration: underline; }
 }
 
-@media (max-width: 900px) {
+/* By the space the dashboard has, as a tool open beside it takes some. */
+@container (max-width: 900px) {
   .veo-dash .chart-row { grid-template-columns: 1fr; }
+}
+
+/* With room for both, an open tool sits beside the stats rather than covering them. */
+@media (min-width: 1280px) {
+  .veo-dash[data-beside-panel] { padding-right: 620px; }
 }

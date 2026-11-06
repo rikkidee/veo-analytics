@@ -69,7 +69,7 @@ export async function loadDashboardData(supabase: SupabaseClient): Promise<Dashb
       supabase.from("players").select("*").order("id").range(from, to),
     ),
     fetchAll<DashboardGame>((from, to) =>
-      supabase.from("games").select("id, team_id, game_label, game_date, opponent, team_stats").order("id").range(from, to),
+      supabase.from("games").select("id, team_id, game_label, game_date, opponent, veo_url, team_stats").order("id").range(from, to),
     ),
     fetchAll<DashboardStatRow>((from, to) =>
       supabase.from("player_game_stats").select("game_id, player_id, stats").order("id").range(from, to),

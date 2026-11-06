@@ -126,6 +126,7 @@ export type DashboardTeam = {
   id: string;
   name: string;
   club?: string | null;
+  age_group?: string | null;
   logo_url?: string | null;
   analysis?: string | null;
   team_analysis?: string | null;
@@ -135,6 +136,7 @@ export type DashboardPlayer = {
   team_id: string;
   name: string;
   default_jersey: number;
+  position?: string | null;
   nickname?: string | null;
   scouting_report?: string | null;
   strengths?: string | null;
@@ -147,6 +149,7 @@ export type DashboardGame = {
   game_label: string;
   game_date: string;
   opponent: string | null;
+  veo_url?: string | null;
   /** Veo's stat cards by label, plus "Score" from the report's header, which also has `teams`. */
   team_stats: Record<string, { text?: string; values?: number[]; teams?: string[] }> | null;
 };
@@ -168,5 +171,35 @@ export type DashboardData = {
   stats: DashboardStatRow[];
   corrections: DashboardCorrection[];
 };
+
+/** A saved game as it's being mapped, shown ahead of the save reaching the database. */
+export type GamePreview = {
+  /** Identifies this version, to tell when it's the one that got saved. */
+  version: string;
+  saved: boolean;
+  stats: { player_id: string; stats: StatLine }[];
+  corrections: { player_id: string; event_type: string }[];
+  coverage: GameCoverage;
+  details: Pick<DashboardGame, "game_label" | "game_date" | "opponent">;
+};
+
+export function withPreviews(data: DashboardData, previews: Record<string, GamePreview>): DashboardData {
+  const entries = Object.entries(previews);
+  if (entries.length === 0) return data;
+  const others = <T extends { game_id: string }>(rows: T[]) => rows.filter((row) => !previews[row.game_id]);
+  return {
+    ...data,
+    games: data.games.map((game) => (previews[game.id] ? { ...game, ...previews[game.id].details } : game)),
+    stats: [
+      ...others(data.stats),
+      ...entries.flatMap(([game_id, { stats }]) => stats.map((row) => ({ game_id, player_id: row.player_id, stats: row.stats }))),
+    ],
+    corrections: [
+      ...others(data.corrections),
+      ...entries.flatMap(([game_id, { corrections }]) => corrections.map((row) => ({ game_id, ...row, value: 1 }))),
+    ],
+    coverage: { ...data.coverage, ...Object.fromEntries(entries.map(([id, { coverage }]) => [id, coverage])) },
+  };
+}
 
 export const EVENT_COLUMNS: Record<string, string> = { goal: "Goals", shot: "Shots" };

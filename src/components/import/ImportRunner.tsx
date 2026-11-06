@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   createContext,
@@ -14,6 +13,7 @@ import {
   useTransition,
   type ReactNode,
 } from "react";
+import { PanelLink } from "@/components/panels/links";
 import { autoSaveGame, describeSaveError } from "@/lib/games";
 import { getSupabase } from "@/lib/supabase/client";
 import type { RosterPlayer, VeoGame } from "@/lib/veo";
@@ -186,7 +186,7 @@ export default function ImportRunner({ children }: { children: ReactNode }) {
       {run && (
         <div
           role="status"
-          className="fixed bottom-4 left-1/2 z-50 flex w-[min(34rem,calc(100vw-2rem))] -translate-x-1/2 flex-col gap-2 rounded-lg border border-neutral-800 bg-neutral-900 p-4 text-sm shadow-lg"
+          className="fixed bottom-4 left-1/2 z-50 flex w-[min(34rem,calc(100vw-2rem))] -translate-x-1/2 xl:left-4 xl:translate-x-0 flex-col gap-2 rounded-lg border border-neutral-800 bg-neutral-900 p-4 text-sm shadow-lg"
         >
           {run.active ? (
             <>
@@ -243,9 +243,9 @@ export default function ImportRunner({ children }: { children: ReactNode }) {
                 </ul>
               )}
               {run.saved < total && (
-                <Link href="/onboarding/games" className="w-fit font-medium text-emerald-400 hover:underline" onClick={dismiss}>
+                <PanelLink panel="import" className="w-fit font-medium text-emerald-400 hover:underline" onClick={dismiss}>
                   Try the rest again →
-                </Link>
+                </PanelLink>
               )}
             </>
           )}

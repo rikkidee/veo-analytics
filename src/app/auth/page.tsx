@@ -16,7 +16,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 };
 
 async function AuthContent({ searchParams }: { searchParams: PageProps<"/auth">["searchParams"] }) {
-  if (await getCurrentUser()) redirect("/onboarding");
+  if (await getCurrentUser()) redirect("/dashboard");
 
   const { error } = await searchParams;
   const initialError =

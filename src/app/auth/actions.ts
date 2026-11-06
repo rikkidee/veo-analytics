@@ -53,7 +53,7 @@ export async function authenticate(_previous: AuthState, formData: FormData): Pr
   }
 
   revalidatePath("/", "layout");
-  redirect("/onboarding");
+  redirect("/dashboard");
 }
 
 export async function signInWithGoogle() {
