@@ -143,6 +143,8 @@ export type DashboardPlayer = {
   strengths?: string | null;
   areas_to_develop?: string | null;
   coach_notes?: string | null;
+  report_generated_at?: string | null;
+  stats_changed_at?: string | null;
 };
 export type DashboardGame = {
   id: string;
@@ -151,6 +153,7 @@ export type DashboardGame = {
   game_date: string;
   opponent: string | null;
   veo_url?: string | null;
+  created_at?: string | null;
   /** Veo's stat cards by label, plus "Score" from the report's header, which also has `teams`. */
   team_stats: Record<string, { text?: string; values?: number[]; teams?: string[] }> | null;
 };
@@ -162,7 +165,7 @@ export type DashboardCorrection = {
   value: number | null;
 };
 /** What's still unassigned in a saved game. Games saved before reports were kept aren't listed. */
-export type GameCoverage = { matched: number; unassigned: number };
+export type GameCoverage = { matched: number; unassigned: number; unassignedMinutes: number };
 
 export type DashboardData = {
   coverage?: Record<string, GameCoverage>;

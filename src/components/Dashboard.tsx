@@ -36,18 +36,8 @@ type Tab = (typeof TABS)[number][0];
 function TeamContent({ team, tab }: { team: TeamModel; tab: Tab }) {
   const panel = (name: Tab) => (tab === name ? undefined : "hidden");
   const auto = useAutoReports(team);
-  const gamesToMap = team.games.filter((game) => (game.unassignedJerseys ?? 0) > 0).length;
   return (
     <>
-      {gamesToMap > 0 && (
-        <div className="mapping-banner">
-          <p>
-            We auto-matched {team.players.length} of {team.rosterSize} players across {team.games.length}{" "}
-            {team.games.length === 1 ? "game" : "games"}. Some player stats may be incomplete.
-          </p>
-          <PanelLink panel="map">Complete jersey mapping for full accuracy →</PanelLink>
-        </div>
-      )}
       {auto.status && (
         <p role="status" className="generate-status">
           {auto.status}
@@ -139,6 +129,21 @@ function RosterPanel({
         + Add another team
       </button>
     </>
+  );
+}
+
+/** Stays up across every tab until no minutes are left on unassigned jerseys. */
+function UnassignedBanner({ team }: { team: TeamModel }) {
+  const games = team.games.filter((game) => Math.round(game.unassignedMinutes ?? 0) > 0);
+  const minutes = Math.round(games.reduce((sum, game) => sum + (game.unassignedMinutes ?? 0), 0));
+  if (minutes === 0) return null;
+  return (
+    <p role="status" className="unassigned-banner">
+      <span aria-hidden="true">⚠️ </span>
+      {minutes} {minutes === 1 ? "minute" : "minutes"} of player data across {games.length}{" "}
+      {games.length === 1 ? "game is" : "games are"} unassigned — <PanelLink panel="map">Map Jerseys</PanelLink> to
+      capture the full picture
+    </p>
   );
 }
 
@@ -277,6 +282,7 @@ export default function Dashboard({ data: saved, email }: { data: DashboardData;
           </div>
         ) : (
           <>
+            <UnassignedBanner team={model} />
             <div className="nav">
               {TABS.map(([name, label]) => (
                 <button

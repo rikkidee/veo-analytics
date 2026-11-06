@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { KM_PER_MILE, type TeamModel } from "@/lib/dashboard";
+import { PanelLink } from "@/components/panels/links";
 import Chart, { easyHover, SERIES_COLORS, type ChartConfig } from "./Chart";
 import { MinutesNotice } from "./parts";
 
@@ -110,6 +111,12 @@ export default function LeaderboardTab({ team }: { team: TeamModel }) {
 
   return (
     <>
+      {team.games.some((game) => (game.unassignedJerseys ?? 0) > 0) && (
+        <p className="muted leaderboard-hint">
+          Stats look off? Unmatched jerseys can cause missing or inflated numbers.{" "}
+          <PanelLink panel="map">Fix it in Map Jerseys →</PanelLink>
+        </p>
+      )}
       <div className="section-title">Season Leaderboards</div>
       <div className="toggle-row">
         <select

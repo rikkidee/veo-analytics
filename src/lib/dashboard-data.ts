@@ -8,7 +8,7 @@ import type {
   DashboardTeam,
   GameCoverage,
 } from "@/lib/stats";
-import { detectedJerseys, type VeoPayload } from "@/lib/veo";
+import { detectedJerseys, minutesByJersey, type VeoPayload } from "@/lib/veo";
 
 const PAGE_SIZE = 1000;
 
@@ -50,7 +50,12 @@ export async function loadMappingCoverage(
           mappings.filter((row) => row.game_id === game.id).map((row) => row.detected_jersey),
         );
         const matched = jerseys.filter((jersey) => decided.has(jersey)).length;
-        return [[game.id, { matched, unassigned: jerseys.length - matched }]];
+        const minutes = minutesByJersey(game.veo_payload);
+        const unassignedMinutes = jerseys.reduce(
+          (sum, jersey) => sum + (decided.has(jersey) ? 0 : (minutes.get(jersey) ?? 0)),
+          0,
+        );
+        return [[game.id, { matched, unassigned: jerseys.length - matched, unassignedMinutes }]];
       }),
     );
   } catch {
@@ -69,7 +74,7 @@ export async function loadDashboardData(supabase: SupabaseClient): Promise<Dashb
       supabase.from("players").select("*").order("id").range(from, to),
     ),
     fetchAll<DashboardGame>((from, to) =>
-      supabase.from("games").select("id, team_id, game_label, game_date, opponent, veo_url, team_stats").order("id").range(from, to),
+      supabase.from("games").select("id, team_id, game_label, game_date, opponent, veo_url, team_stats, created_at").order("id").range(from, to),
     ),
     fetchAll<DashboardStatRow>((from, to) =>
       supabase.from("player_game_stats").select("game_id, player_id, stats").order("id").range(from, to),

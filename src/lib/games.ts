@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { readStat, type StatLine } from "@/lib/stats";
 import {
   attributeEvents,
   autoChoices,
@@ -89,6 +90,39 @@ export function saveGame(supabase: SupabaseClient, input: SaveGameInput) {
   return inTurn(() => writeGame(supabase, input));
 }
 
+/**
+ * One player's numbers in a game, written so the same numbers always read the same.
+ * Compared by value, as a saved row can hold 30 where the report says "30min". Rounded
+ * as saved rows can hold more digits than the report shows.
+ */
+function fingerprints(
+  stats: { player_id: string; stats: StatLine }[],
+  corrections: { player_id: string | null; event_type: string }[],
+) {
+  const byPlayer = new Map<string, { stats: unknown[]; corrections: string[] }>();
+  const entry = (playerId: string) => {
+    if (!byPlayer.has(playerId)) byPlayer.set(playerId, { stats: [], corrections: [] });
+    return byPlayer.get(playerId)!;
+  };
+  for (const row of stats) {
+    entry(row.player_id).stats = Object.entries(row.stats)
+      .flatMap(([column, value]) => {
+        const number = readStat(column, value);
+        return number === null ? [] : [[column, Math.round(number * 10) / 10]];
+      })
+      .sort(([a], [b]) => String(a).localeCompare(String(b)));
+  }
+  for (const row of corrections) {
+    if (row.player_id) entry(row.player_id).corrections.push(row.event_type);
+  }
+  return new Map(
+    [...byPlayer].map(([playerId, { stats: line, corrections: events }]) => [
+      playerId,
+      JSON.stringify([line, events.sort()]),
+    ]),
+  );
+}
+
 async function writeGame(supabase: SupabaseClient, input: SaveGameInput) {
   const { teamId, payload, roster, choices, eventAssignments } = input;
 
@@ -111,7 +145,16 @@ async function writeGame(supabase: SupabaseClient, input: SaveGameInput) {
   if (lookupError) throw lookupError;
 
   let gameId: string = existing[0]?.id;
+  // A new game has nothing to compare with, and every report is due a rewrite for it anyway.
+  let before: Map<string, string> | null = null;
   if (gameId) {
+    const [oldStats, oldCorrections] = await Promise.all([
+      supabase.from("player_game_stats").select("player_id, stats").eq("game_id", gameId),
+      supabase.from("event_corrections").select("player_id, event_type").eq("game_id", gameId),
+    ]);
+    if (oldStats.error) throw oldStats.error;
+    if (oldCorrections.error) throw oldCorrections.error;
+    before = fingerprints(oldStats.data, oldCorrections.data);
     const { error } = await supabase.from("games").update(fields).eq("id", gameId);
     if (error) throw error;
     for (const table of ["jersey_mappings", "player_game_stats", "event_corrections"]) {
@@ -157,6 +200,20 @@ async function writeGame(supabase: SupabaseClient, input: SaveGameInput) {
       })),
     );
     if (error) throw error;
+  }
+
+  if (before) {
+    const after = fingerprints(
+      stats,
+      eventAssignments.map(({ playerId, type }) => ({ player_id: playerId, event_type: type })),
+    );
+    const changed = [...new Set([...before.keys(), ...after.keys()])].filter(
+      (playerId) => before.get(playerId) !== after.get(playerId),
+    );
+    if (changed.length > 0) {
+      // Only drives a hint on the profile, so a failure here shouldn't fail the save.
+      await supabase.from("players").update({ stats_changed_at: new Date().toISOString() }).in("id", changed);
+    }
   }
 
   return gameId;

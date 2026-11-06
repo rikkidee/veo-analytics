@@ -28,6 +28,9 @@ CREATE TABLE players (
   strengths TEXT,
   areas_to_develop TEXT,
   coach_notes TEXT,
+  -- When the report was written, and when this player's stats last changed in a saved game.
+  report_generated_at TIMESTAMPTZ,
+  stats_changed_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

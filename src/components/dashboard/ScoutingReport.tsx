@@ -16,6 +16,8 @@ export default function ScoutingReport({
 }) {
   const router = useRouter();
   const [generated, setGenerated] = useState<SavedReport | null>(null);
+  // The player as they were when regenerated, as the flags below are out of date until fresh data arrives.
+  const [regeneratedFrom, setRegeneratedFrom] = useState<PlayerModel | null>(null);
   const [notes, setNotes] = useState(player.coachNotes ?? "");
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -23,15 +25,22 @@ export default function ScoutingReport({
   const { nickname, report, strengths, develop } = generated ?? autoReport ?? player;
   const hasReport = Boolean(nickname || report || strengths || develop);
 
-  async function generate() {
+  const outOfDate =
+    hasReport &&
+    !generating &&
+    regeneratedFrom !== player &&
+    (player.statsChangedSinceReport || (player.newGameSinceReport && !autoReport));
+
+  async function generate({ confirmFirst }: { confirmFirst: boolean }) {
     // Reports may be hand-written, and there's no way to get one back once replaced.
-    if (hasReport && !window.confirm("Replace this player's current report? This can't be undone.")) return;
+    if (confirmFirst && hasReport && !window.confirm("Replace this player's current report? This can't be undone.")) return;
     setGenerating(true);
     setError(null);
     try {
       const result = await requestPlayerReport(player.id, notes, false);
       if (result.report) {
         setGenerated(result.report);
+        setRegeneratedFrom(player);
         router.refresh();
       } else {
         setError(result.error);
@@ -43,6 +52,14 @@ export default function ScoutingReport({
 
   return (
     <div className="chart-container scouting">
+      {outOfDate && (
+        <p className="report-stale">
+          Stats updated since last analysis.{" "}
+          <button type="button" onClick={() => generate({ confirmFirst: false })}>
+            Regenerate
+          </button>
+        </p>
+      )}
       {hasReport && (
         <>
           <h3>
@@ -75,7 +92,7 @@ export default function ScoutingReport({
         />
       </label>
       <div className="generate-row">
-        <button type="button" className="generate-btn" disabled={generating} onClick={generate}>
+        <button type="button" className="generate-btn" disabled={generating} onClick={() => generate({ confirmFirst: true })}>
           {generating ? "Generating…" : hasReport ? "Regenerate Analysis" : "Generate Analysis"}
         </button>
         <span role="status" className="muted">

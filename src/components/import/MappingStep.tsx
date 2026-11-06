@@ -262,7 +262,11 @@ export default function MappingStep({
       version,
       stats: buildPlayerStats(payload, choices, roster).map(({ player_id, stats }) => ({ player_id, stats })),
       corrections: eventAssignments.map(({ type, playerId }) => ({ player_id: playerId, event_type: type })),
-      coverage: { matched: jerseys.length - undecided.length, unassigned: undecided.length },
+      coverage: {
+        matched: jerseys.length - undecided.length,
+        unassigned: undecided.length,
+        unassignedMinutes: undecided.reduce((sum, jersey) => sum + (jerseyMinutes.get(jersey) ?? 0), 0),
+      },
       details: { game_label: label.trim(), game_date: date, opponent: opponent.trim() || null },
     });
     // Changed back to what's already saved, so there's nothing to write.

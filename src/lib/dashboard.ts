@@ -38,6 +38,8 @@ export type GameModel = {
   hasTeamStats: boolean;
   /** Jerseys in this game not assigned to anyone yet, or null if that's not known. */
   unassignedJerseys: number | null;
+  /** Minutes on those jerseys, or null if that's not known. */
+  unassignedMinutes: number | null;
   /** Veo's speeds here are far above the team's other games. See flagHighTracking. */
   trackingLooksHigh: boolean;
 };
@@ -55,6 +57,10 @@ export type PlayerModel = {
   strengths: string | null;
   develop: string | null;
   coachNotes: string | null;
+  /** A game was imported after this player's report was written. */
+  newGameSinceReport: boolean;
+  /** This player's numbers in a saved game changed after the report was written. */
+  statsChangedSinceReport: boolean;
   gamesPlayed: number;
   totals: StatValues;
   per60: StatValues;
@@ -231,11 +237,15 @@ function addLine(line: StatValues, more: StatValues) {
   }
 }
 
+const isAfter = (later: string | null | undefined, earlier: string | null | undefined) =>
+  Boolean(later && earlier && Date.parse(later) > Date.parse(earlier));
+
 function buildPlayer(
   player: DashboardPlayer,
   ids: Set<string>,
   data: DashboardData,
   games: GameModel[],
+  latestGameAt: string | null,
 ): PlayerModel {
   const perGame = new Map<string, PlayerGame>();
   for (const game of games) {
@@ -291,6 +301,10 @@ function buildPlayer(
     strengths: player.strengths ?? null,
     develop: player.areas_to_develop ?? null,
     coachNotes: player.coach_notes ?? null,
+    // A report with no time isn't treated as outdated, so nothing regenerates without
+    // the columns from add-report-tracking.sql.
+    newGameSinceReport: isAfter(latestGameAt, player.report_generated_at),
+    statsChangedSinceReport: isAfter(player.stats_changed_at, player.report_generated_at),
     gamesPlayed: perGame.size,
     totals,
     per60,
@@ -366,6 +380,10 @@ function mergeDuplicates(roster: DashboardPlayer[]) {
         strengths: existing.player.strengths ?? entry.strengths,
         areas_to_develop: existing.player.areas_to_develop ?? entry.areas_to_develop,
         coach_notes: existing.player.coach_notes ?? entry.coach_notes,
+        report_generated_at: existing.player.report_generated_at ?? entry.report_generated_at,
+        stats_changed_at: isAfter(entry.stats_changed_at, existing.player.stats_changed_at)
+          ? entry.stats_changed_at
+          : (existing.player.stats_changed_at ?? entry.stats_changed_at),
       };
     } else {
       merged.push({ player: entry, ids: new Set([entry.id]) });
@@ -390,6 +408,7 @@ export function buildTeamModel(data: DashboardData, teamId: string): TeamModel {
         opponent: game.opponent ?? names?.[swapped ? 0 : 1] ?? null,
         stats: readTeamStats(game.team_stats, swapped),
         unassignedJerseys: data.coverage?.[game.id]?.unassigned ?? null,
+        unassignedMinutes: data.coverage?.[game.id]?.unassignedMinutes ?? null,
         trackingLooksHigh: false,
         hasTeamStats: Object.entries(game.team_stats ?? {}).some(
           ([label, card]) => label !== "Score" && (card.values?.length ?? 0) >= 2,
@@ -397,9 +416,13 @@ export function buildTeamModel(data: DashboardData, teamId: string): TeamModel {
       };
     });
 
+  const latestGameAt = data.games
+    .filter((game) => game.team_id === teamId)
+    .reduce<string | null>((latest, game) => (isAfter(game.created_at, latest) || !latest ? (game.created_at ?? latest) : latest), null);
+
   const roster = mergeDuplicates(data.players.filter((player) => player.team_id === teamId));
   const players = roster
-    .map(({ player, ids }) => buildPlayer(player, ids, data, games))
+    .map(({ player, ids }) => buildPlayer(player, ids, data, games, latestGameAt))
     .filter((player) => player.gamesPlayed > 0)
     .sort((a, b) => a.name.localeCompare(b.name));
 

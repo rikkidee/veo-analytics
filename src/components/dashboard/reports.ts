@@ -28,9 +28,9 @@ async function post(url: string, body: object): Promise<({ ok: true; result: Rec
 export async function requestPlayerReport(
   playerId: string,
   coachNotes: string,
-  onlyIfMissing: boolean,
+  onlyIfNeeded: boolean,
 ): Promise<{ report: SavedReport; error?: undefined; status?: undefined } | ({ report?: undefined } & Failure)> {
-  const response = await post(`/api/players/${playerId}/report`, { coachNotes, onlyIfMissing });
+  const response = await post(`/api/players/${playerId}/report`, { coachNotes, onlyIfNeeded });
   if (!response.ok) return { status: response.status, error: response.error };
   const { nickname, scouting_report, strengths, areas_to_develop } = response.result;
   return { report: { nickname, report: scouting_report, strengths, develop: areas_to_develop } };
@@ -50,8 +50,9 @@ export async function requestTeamAnalysis(
   return { analysis: response.result.team_analysis, contextSaved: response.result.context_saved !== "false" };
 }
 
-const hasReport = (player: PlayerModel) =>
-  Boolean(player.nickname || player.report || player.strengths || player.develop);
+/** No report yet, or one written before the latest game came in. */
+const needsReport = (player: PlayerModel) =>
+  player.newGameSinceReport || !(player.nickname || player.report || player.strengths || player.develop);
 
 // A 502 means just this one failed. Anything else, such as a missing API key or
 // being rate limited, would fail the same way for every player and might cost money.
@@ -60,8 +61,9 @@ const ONLY_THIS_ONE_FAILED = 502;
 const AFFECTS_EVERYTHING = new Set([0, 401, 429, 503]);
 
 /**
- * Writes whatever's missing, one at a time, once per visit. Everything is saved as
- * it goes, so leaving the page loses nothing and the next visit picks up the rest.
+ * Writes whatever's missing or outdated by a new game, one at a time, once per visit,
+ * with each player's saved coach notes. Everything is saved as it goes, so leaving the
+ * page loses nothing and the next visit picks up the rest.
  */
 export function useAutoReports(team: TeamModel) {
   const router = useRouter();
@@ -71,7 +73,7 @@ export function useAutoReports(team: TeamModel) {
   const [reports, setReports] = useState<Record<string, SavedReport>>({});
   const [teamAnalysis, setTeamAnalysis] = useState<string | null>(null);
   const [progress, setProgress] = useState(() => {
-    const missing = team.players.filter((player) => !hasReport(player)).length;
+    const missing = team.players.filter(needsReport).length;
     return team.hasMinutes && missing > 0
       ? { complete: team.players.length - missing, total: team.players.length }
       : null;
@@ -85,7 +87,7 @@ export function useAutoReports(team: TeamModel) {
     if (started.current || importing || !team.hasMinutes) return;
     started.current = true;
 
-    const missing = team.players.filter((player) => !hasReport(player));
+    const missing = team.players.filter(needsReport);
     const total = team.players.length;
     let complete = total - missing.length;
     let failed = 0;

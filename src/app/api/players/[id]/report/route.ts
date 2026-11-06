@@ -20,9 +20,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   const body: unknown = await request.json().catch(() => null);
-  const { coachNotes: rawNotes = "", onlyIfMissing = false } = (body ?? {}) as {
+  const { coachNotes: rawNotes = "", onlyIfNeeded = false } = (body ?? {}) as {
     coachNotes?: unknown;
-    onlyIfMissing?: boolean;
+    onlyIfNeeded?: boolean;
   };
   if (typeof rawNotes !== "string") return fail(400, "Coach notes need to be text.");
   const coachNotes = rawNotes.trim();
@@ -40,8 +40,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   // Checked first, as finding out on save would pay for a report that can't be kept.
   if (!("coach_notes" in saved)) return fail(500, MISSING_COLUMN);
 
-  // Automatic runs never replace a report, including ones written by hand.
-  if (onlyIfMissing && (saved.nickname || saved.scouting_report || saved.strengths || saved.areas_to_develop)) {
+  const team = buildTeamModel(data, teamId);
+  const player = team.players.find((other) => other.id === id);
+
+  // Automatic runs only replace a report once a new game has come in since it was written.
+  // Checked here as well as in the browser, so a second open tab can't pay for it twice.
+  const hasReport = saved.nickname || saved.scouting_report || saved.strengths || saved.areas_to_develop;
+  if (onlyIfNeeded && hasReport && !player?.newGameSinceReport) {
     return Response.json({
       nickname: saved.nickname,
       scouting_report: saved.scouting_report,
@@ -50,8 +55,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     });
   }
 
-  const team = buildTeamModel(data, teamId);
-  const player = team.players.find((other) => other.id === id);
   if (!player) return fail(400, "This player has no saved stats yet.");
   if (!team.hasMinutes) return fail(400, "Reports use per 60 stats, and this team's games have no minutes saved.");
 
@@ -64,7 +67,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     throw cause;
   }
 
-  const { error } = await supabase.from("players").update(columns).eq("id", id);
+  const { error } = await supabase
+    .from("players")
+    .update({
+      ...columns,
+      ...("report_generated_at" in saved ? { report_generated_at: new Date().toISOString() } : {}),
+    })
+    .eq("id", id);
   if (error) return fail(500, "The report was written but couldn't be saved. Try again.");
   return Response.json(columns);
 }
