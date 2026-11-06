@@ -452,6 +452,14 @@
 
   // The player cell holds a button reading "Deanna Motley#12", or "3Jersey #3–" for
   // a player with no Veo profile, then a <wa-popover> of stats that must not be read.
+  // Each card should show a number for both teams.
+  function statsHaveNumbers(stats) {
+    const cards = Object.values(stats);
+    return cards.length > 0 && cards.every(({ values }) => values.length >= 2);
+  }
+
+  const hasTeamNumbers = () => statsHaveNumbers(extractTeamStats());
+
   function readPlayerCell(cell) {
     const trigger = [...cell.querySelectorAll("button")].find((button) => !button.closest("wa-popover"));
     const text = (trigger?.textContent ?? "").replace(/\s+/g, " ").trim();
@@ -600,8 +608,9 @@
         error: "No match report loaded. Match Reports may not be enabled for this game.",
       };
     }
-    // Team stats load separately from the rest of the page.
-    await waitFor(() => document.querySelector("article[aria-label]"), 10_000);
+    // Team stats load separately from the rest of the page, and the cards can appear
+    // before their numbers do.
+    await waitFor(hasTeamNumbers, 10_000);
 
     const warnings = [];
     // Opening the Player Stats tab may remove what the current tab shows, so read
@@ -613,7 +622,7 @@
     const columnCount = await ensureColumns(warnings);
     const players = extractPlayerStats(warnings);
 
-    if (Object.keys(teamStats).length === 0) teamStats = extractTeamStats();
+    if (!statsHaveNumbers(teamStats)) teamStats = extractTeamStats();
     keyEvents ??= extractKeyEvents(warnings);
 
     if (players.rows.length === 0 && Object.keys(teamStats).length === 0) {
@@ -623,7 +632,9 @@
       };
     }
     if (players.rows.length === 0) warnings.push("No player rows found.");
-    if (Object.keys(teamStats).length === 0) warnings.push("No team stats found.");
+    if (!statsHaveNumbers(teamStats)) {
+      warnings.push("Team stats couldn't be read, so goals against, possession and other team numbers will be missing for this game.");
+    }
 
     const slug = location.pathname.match(/^\/matches\/([^/]+)/)[1];
     return {

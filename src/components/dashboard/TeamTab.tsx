@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import type { TeamModel, TeamStatName } from "@/lib/dashboard";
+import { KM_PER_MILE, type TeamModel, type TeamStatName } from "@/lib/dashboard";
 import Chart, { baseOptions, percentOptions, type ChartConfig } from "./Chart";
 import { StatCard } from "./parts";
 
@@ -23,7 +23,16 @@ export default function TeamTab({ team }: { team: TeamModel }) {
   const attempts = sum(own("Total attempts"));
   const corners = sum(own("Corners"));
   const fouls = sum(own("Fouls"));
-  const possession = sum(own("Possession"));
+  // Games without a reading are left out, so they don't drag the average down.
+  const possessionReadings = games.flatMap((game) => game.stats.Possession.own ?? []);
+  const avgPossession = possessionReadings.length > 0 ? `${Math.round(sum(possessionReadings) / possessionReadings.length)}%` : "—";
+  // With no opponent numbers these are unknown, and 0 would read as a clean sheet.
+  const opponentKnown = games.some((game) => game.stats.Goals.opp !== null);
+  const gamesWithoutTeamStats = games.filter((game) => !game.hasTeamStats).length;
+
+  const distanceKm = (label: string) =>
+    players.reduce((total, player) => total + (player.perGame.get(label)?.["Distance tracked"] ?? 0), 0) * KM_PER_MILE;
+  const totalDistanceKm = sum(games.map((game) => distanceKm(game.label)));
 
   let wins = 0;
   let draws = 0;
@@ -125,6 +134,27 @@ export default function TeamTab({ team }: { team: TeamModel }) {
         options: baseOptions,
       } as ChartConfig,
       corners: bars("Corners", "#3fb950"),
+      distance: {
+        type: "line",
+        data: {
+          labels,
+          datasets: [
+            {
+              label: ownLabel,
+              data: games.map((game) =>
+                Math.round(
+                  players.reduce((total, player) => total + (player.perGame.get(game.label)?.["Distance tracked"] ?? 0), 0) * KM_PER_MILE * 10,
+                ) / 10,
+              ),
+              borderColor: OWN.bar,
+              backgroundColor: OWN.fill,
+              fill: true,
+              tension: 0.3,
+            },
+          ],
+        },
+        options: baseOptions,
+      } as ChartConfig,
     };
     // labels is derived from games.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -132,14 +162,26 @@ export default function TeamTab({ team }: { team: TeamModel }) {
 
   return (
     <>
+      {gamesWithoutTeamStats > 0 && (
+        <p role="status" className="chart-error" style={{ marginTop: 24 }}>
+          {gamesWithoutTeamStats} of {n} {n === 1 ? "game has" : "games have"} no team stats saved, so opponent
+          numbers, possession and the record leave {gamesWithoutTeamStats === 1 ? "it" : "them"} out. This
+          team&apos;s own numbers are totaled from its players, which can run lower than the real team figures. Import{" "}
+          {gamesWithoutTeamStats === 1 ? "it" : "them"} again to fill the rest in.
+        </p>
+      )}
       <div className="section-title">Season Summary</div>
       <div className="grid">
         <StatCard value={n} label="Games" />
-        <StatCard value={`${wins}-${draws}-${losses}`} label="W-D-L" tone="green" />
+        <StatCard value={opponentKnown ? `${wins}-${draws}-${losses}` : "—"} label="W-D-L" tone="green" />
         <StatCard value={goalsFor} label="Goals For" />
-        <StatCard value={goalsAgainst} label="Goals Against" tone={goalsAgainst > goalsFor ? "red" : "green"} />
+        <StatCard
+          value={opponentKnown ? goalsAgainst : "—"}
+          label="Goals Against"
+          tone={!opponentKnown ? undefined : goalsAgainst > goalsFor ? "red" : "green"}
+        />
         <StatCard value={players.length} label="Players" />
-        <StatCard value={`${Math.round(possession / n)}%`} label="Avg Possession" />
+        <StatCard value={avgPossession} label="Avg Possession" />
       </div>
 
       <div className="section-title">Offensive Stats</div>
@@ -159,7 +201,8 @@ export default function TeamTab({ team }: { team: TeamModel }) {
         <StatCard value={(passes / n).toFixed(0)} label="Passes / Game" />
         <StatCard value={(successful / n).toFixed(0)} label="Successful / Game" />
         <StatCard value={`${passes > 0 ? Math.round((successful / passes) * 100) : 0}%`} label="Pass Accuracy" />
-        <StatCard value={`${Math.round(possession / n)}%`} label="Avg Possession" />
+        <StatCard value={avgPossession} label="Avg Possession" />
+        {totalDistanceKm > 0 && <StatCard value={(totalDistanceKm / n).toFixed(1)} label="Distance / Game (km)" />}
       </div>
       <div className="chart-row">
         <div className="chart-container"><h3>Possession %</h3><Chart config={charts.possession} /></div>
@@ -167,12 +210,16 @@ export default function TeamTab({ team }: { team: TeamModel }) {
       </div>
       <div className="chart-row">
         <div className="chart-container"><h3>Pass Accuracy %</h3><Chart config={charts.accuracy} /></div>
-        <div className="chart-container" style={{ visibility: "hidden" }} />
+        {totalDistanceKm > 0 ? (
+          <div className="chart-container"><h3>Team Distance (km)</h3><Chart config={charts.distance} /></div>
+        ) : (
+          <div className="chart-container" style={{ visibility: "hidden" }} />
+        )}
       </div>
 
       <div className="section-title">Defensive Stats</div>
       <div className="grid">
-        <StatCard value={(goalsAgainst / n).toFixed(1)} label="Goals Conceded / Game" />
+        <StatCard value={opponentKnown ? (goalsAgainst / n).toFixed(1) : "—"} label="Goals Conceded / Game" />
         <StatCard value={(playerTotal("Tackles") / n).toFixed(0)} label="Tackles / Game" />
         <StatCard value={(playerTotal("Duels") / n).toFixed(0)} label="Duels / Game" />
         <StatCard value={(playerTotal("Interceptions") / n).toFixed(0)} label="Interceptions / Game" />

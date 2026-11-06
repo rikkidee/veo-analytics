@@ -32,6 +32,8 @@ export type GameModel = {
   /** Like "Sep 13". */
   date: string;
   stats: Record<TeamStatName, TeamStat>;
+  /** False when the saved report has no team numbers, so only player totals fill in. */
+  hasTeamStats: boolean;
 };
 
 export type StatValues = Record<string, number>;
@@ -68,16 +70,29 @@ export type TeamModel = {
   teamAnalysis: string | null;
 };
 
+// Loose enough for wording like "Goals scored" or "Ball possession". The more
+// specific passing labels are tried with "Total passes" ruling them out.
 const TEAM_STAT_LABELS: Record<TeamStatName, RegExp> = {
-  Goals: /^goals?$/i,
-  "Total attempts": /^(total )?(attempts|shots)$/i,
-  Possession: /^possession/i,
-  "Total passes": /^(total )?passes$/i,
-  "Successful passes": /^(successful passes|passes successful)$/i,
-  "Pass accuracy": /^(pass(es)? accuracy|passes success rate)$/i,
-  Corners: /^corners?$/i,
-  Fouls: /^fouls?$/i,
-  "Free kicks": /^free[- ]kicks?$/i,
+  Goals: /^(total )?goals?\b(?! kick)/i,
+  "Total attempts": /^(total )?(attempts|shots)\b(?!.*\b(on|off) target)/i,
+  Possession: /\bpossession\b/i,
+  "Total passes": /^(total )?pass(es)?$|^passes (total|attempted)$/i,
+  "Successful passes": /\b(successful|completed) pass|^pass(es)? (successful|completed)$/i,
+  "Pass accuracy": /^pass(es|ing)? (accuracy|success)/i,
+  Corners: /^corner( kick)?s?\b/i,
+  Fouls: /^fouls?\b/i,
+  "Free kicks": /^free[- ]kicks?\b/i,
+};
+
+// What a team total can be built from when the report's own number is missing.
+const PLAYER_COLUMN_FOR_TEAM_STAT: Partial<Record<TeamStatName, string>> = {
+  Goals: "Goals",
+  "Total attempts": "Total attempts",
+  "Total passes": "Passes",
+  "Successful passes": "Passes successful",
+  Corners: "Corners",
+  Fouls: "Fouls",
+  "Free kicks": "Free kicks",
 };
 
 const PLAYER_COLUMNS: [string, RegExp][] = [
@@ -231,6 +246,25 @@ function buildPlayer(
   };
 }
 
+/** Totals this team's own numbers from its players wherever the report's are missing. */
+function fillFromPlayers(games: GameModel[], players: PlayerModel[]) {
+  for (const game of games) {
+    const lines = players.flatMap((player) => player.perGame.get(game.label) ?? []);
+    if (lines.length === 0) continue;
+    for (const [stat, column] of Object.entries(PLAYER_COLUMN_FOR_TEAM_STAT)) {
+      const entry = game.stats[stat as TeamStatName];
+      if (entry.own === null && lines.some((line) => column in line)) {
+        entry.own = Math.round(lines.reduce((sum, line) => sum + (line[column] ?? 0), 0));
+      }
+    }
+    const { own: passes } = game.stats["Total passes"];
+    const { own: successful } = game.stats["Successful passes"];
+    if (game.stats["Pass accuracy"].own === null && passes && successful !== null) {
+      game.stats["Pass accuracy"].own = Math.round((successful / passes) * 100);
+    }
+  }
+}
+
 /**
  * Folds roster entries for one person, like "Celeste" and "celeste", into one player
  * with all their stats. The capitalized spelling wins, and report fields fill any gaps.
@@ -269,12 +303,15 @@ export function buildTeamModel(data: DashboardData, teamId: string): TeamModel {
       label: `G${index + 1}`,
       date: formatShortDate(game.game_date),
       stats: readTeamStats(game.team_stats),
+      hasTeamStats: Object.values(game.team_stats ?? {}).some((card) => (card.values?.length ?? 0) >= 2),
     }));
 
   const players = mergeDuplicates(data.players.filter((player) => player.team_id === teamId))
     .map(({ player, ids }) => buildPlayer(player, ids, data, games))
     .filter((player) => player.gamesPlayed > 0)
     .sort((a, b) => a.name.localeCompare(b.name));
+
+  fillFromPlayers(games, players);
 
   return {
     id: teamId,
