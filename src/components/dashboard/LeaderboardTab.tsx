@@ -57,6 +57,8 @@ export default function LeaderboardTab({ team }: { team: TeamModel }) {
       .sort((a, b) => b.value - a.value);
   }, [team.players, stat, mode]);
 
+  const wholeGoals = stat === "Goals" && mode === "total";
+
   const chart = useMemo<ChartConfig>(
     () => ({
       type: "bar",
@@ -77,12 +79,17 @@ export default function LeaderboardTab({ team }: { team: TeamModel }) {
         ...easyHover("y"),
         plugins: { legend: { display: false } },
         scales: {
-          x: { ticks: { color: "#8b949e" }, grid: { color: "#21262d" }, beginAtZero: true },
+          x: {
+            // A season's goals are whole numbers, so the scale shouldn't suggest half a goal.
+            ticks: { color: "#8b949e", ...(wholeGoals ? { stepSize: 1, precision: 0 } : {}) },
+            grid: { color: "#21262d" },
+            beginAtZero: true,
+          },
           y: { ticks: { color: "#c9d1d9" }, grid: { display: false } },
         },
       },
     }),
-    [rows, stat, mode],
+    [rows, stat, mode, wholeGoals],
   );
 
   const sorted = sort

@@ -169,19 +169,21 @@ Rules:
 - Base every claim on the stats you're given, and only quote numbers that appear in them or follow directly from them. Don't invent events, opponents or skills the data can't show.
 - Refer to individual players only with their reference, exactly as given, such as [P4]. Don't guess at names.
 - Treat each player's coach notes as true, and let them change how you read that player's numbers.
+- Treat coach_context as true, and let it change how you read the team's numbers. If it names a child, refer to that child only as "one player" or by their reference if it's clear which one, never by name.
 - Players marked low_minutes have rates based on very little time, so don't draw conclusions from them.
 - With fewer than three games, say that it's too early to call a trend rather than stretching the data.
 - Be honest about weaknesses, while keeping it constructive and about soccer. Never comment on bodies, appearance, personality flaws or anything off the field.
 - Write plain text with no markdown or HTML, apart from the player references.`;
 
 /** Players go out as [P1], [P2]..., so names and jerseys stay here. See insertPlayers. */
-function describeTeam(team: TeamModel) {
+function describeTeam(team: TeamModel, coachContext: string) {
   const compared = new Set(comparisonPlayers(team.players));
   const passAccuracy = (passes: number, successful: number) =>
     passes > 0 ? Math.round((successful / passes) * 100) : 0;
 
   return JSON.stringify(
     {
+      coach_context: coachContext || "None",
       games: team.games.map((game) => {
         const sum = (stat: string) =>
           Math.round(team.players.reduce((total, player) => total + (player.perGame.get(game.label)?.[stat] ?? 0), 0));
@@ -214,8 +216,8 @@ function describeTeam(team: TeamModel) {
   );
 }
 
-export function generateTeamAnalysis(team: TeamModel) {
-  return askClaude(TeamAnalysisSchema, TEAM_SYSTEM_PROMPT, describeTeam(team));
+export function generateTeamAnalysis(team: TeamModel, coachContext: string) {
+  return askClaude(TeamAnalysisSchema, TEAM_SYSTEM_PROMPT, describeTeam(team, coachContext));
 }
 
 // Inline styles match the static dashboard's Analysis tab.

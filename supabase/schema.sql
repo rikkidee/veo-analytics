@@ -9,6 +9,8 @@ CREATE TABLE teams (
   analysis TEXT,
   -- Written by AI, where analysis is written by hand.
   team_analysis TEXT,
+  -- What the coach wants that analysis to take into account.
+  coach_context TEXT,
   created_by UUID REFERENCES auth.users(id),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );

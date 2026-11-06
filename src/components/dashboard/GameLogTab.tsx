@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { TEAM_STATS, type TeamModel } from "@/lib/dashboard";
-import { StatCard } from "./parts";
+import { KM_PER_MILE, TEAM_STATS, type TeamModel } from "@/lib/dashboard";
+import { HighTrackingNotice, StatCard } from "./parts";
 
 const PERCENT_STATS = new Set(["Possession", "Pass accuracy"]);
 
@@ -35,10 +35,12 @@ export default function GameLogTab({ team }: { team: TeamModel }) {
           {games.map((other) => (
             <option key={other.id} value={other.id}>
               {other.label} — {other.date}
+              {other.opponent ? ` vs ${other.opponent}` : ""}
             </option>
           ))}
         </select>
       </div>
+      {game.trackingLooksHigh && <HighTrackingNotice games={[game]} />}
       <div className="grid">
         {TEAM_STATS.map((stat) => (
           <StatCard
@@ -54,7 +56,7 @@ export default function GameLogTab({ team }: { team: TeamModel }) {
           <table>
             <thead>
               <tr>
-                {["Player", "Min", "Goals", "Shots", "Pass Succ", "Pass %", "Tackles", "Duels", "Int", "Dribbles", "Recoveries", "HI Runs", "Sprints", "Top Spd"].map((column) => (
+                {["Player", "Min", "Goals", "Shots", "Pass Succ", "Pass %", "Tackles", "Duels", "Int", "Dribbles", "Recoveries", "HI Runs", "Sprints", "Top Spd (kph)"].map((column) => (
                   <th key={column}>{column}</th>
                 ))}
               </tr>
@@ -75,7 +77,7 @@ export default function GameLogTab({ team }: { team: TeamModel }) {
                   <td>{line["Loose ball recoveries"] ?? 0}</td>
                   <td>{line["High-intensity runs"] ?? 0}</td>
                   <td>{line.Sprints ?? 0}</td>
-                  <td>{line["Top speed"] ? line["Top speed"].toFixed(1) : 0}</td>
+                  <td>{line["Top speed"] ? (line["Top speed"] * KM_PER_MILE).toFixed(1) : 0}</td>
                 </tr>
               ))}
             </tbody>

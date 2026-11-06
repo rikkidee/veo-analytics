@@ -5,6 +5,8 @@ import { createClient, getCurrentUser } from "@/lib/supabase/server";
 
 const fail = (status: number, error: string) => Response.json({ error }, { status });
 
+const MAX_CONTEXT = 2000;
+
 /**
  * Generates and saves a team's season analysis. Stats are read here rather than
  * sent by the browser, and row level security limits them to the user's own teams.
@@ -16,7 +18,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   const body: unknown = await request.json().catch(() => null);
-  const onlyIfMissing = (body as { onlyIfMissing?: boolean } | null)?.onlyIfMissing === true;
+  const { onlyIfMissing, coachContext } = (body ?? {}) as { onlyIfMissing?: boolean; coachContext?: unknown };
 
   const { id } = await params;
   const supabase = await createClient();
@@ -29,22 +31,30 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return fail(500, "The database needs an update. Run supabase/add-team-analysis.sql in the Supabase SQL Editor, then reload.");
   }
   // Automatic runs never replace an existing analysis.
-  if (onlyIfMissing && saved.team_analysis) return Response.json({ team_analysis: saved.team_analysis });
+  if (onlyIfMissing === true && saved.team_analysis) return Response.json({ team_analysis: saved.team_analysis });
 
   const team = buildTeamModel(data, id);
   if (team.players.length === 0) return fail(400, "This team has no saved stats yet.");
   if (!team.hasMinutes) return fail(400, "The analysis uses per 60 stats, and this team's games have no minutes saved.");
 
+  // Automatic runs send none, and use what the coach last wrote.
+  const context = typeof coachContext === "string" ? coachContext.trim().slice(0, MAX_CONTEXT) : (saved.coach_context ?? "");
+  // Without the column the context still shapes this analysis. It just can't be kept.
+  const canSaveContext = "coach_context" in saved;
+
   let teamAnalysis;
   try {
-    teamAnalysis = teamAnalysisHtml(await generateTeamAnalysis(team), team);
+    teamAnalysis = teamAnalysisHtml(await generateTeamAnalysis(team, context), team);
   } catch (cause) {
     const failure = generationFailure(cause);
     if (failure) return failure;
     throw cause;
   }
 
-  const { error } = await supabase.from("teams").update({ team_analysis: teamAnalysis }).eq("id", id);
+  const { error } = await supabase
+    .from("teams")
+    .update({ team_analysis: teamAnalysis, ...(canSaveContext ? { coach_context: context || null } : {}) })
+    .eq("id", id);
   if (error) return fail(500, "The analysis was written but couldn't be saved. Try again.");
-  return Response.json({ team_analysis: teamAnalysis });
+  return Response.json({ team_analysis: teamAnalysis, context_saved: String(canSaveContext) });
 }

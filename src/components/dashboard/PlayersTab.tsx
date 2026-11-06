@@ -1,9 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { comparisonPlayers, KM_PER_MILE, type TeamModel } from "@/lib/dashboard";
+import { averagePerGame, comparisonPlayers, KM_PER_MILE, passAccuracy, type PlayerModel, type TeamModel } from "@/lib/dashboard";
 import Chart, { baseOptions, easyHover, type ChartConfig } from "./Chart";
-import { MinutesNotice, StatCard } from "./parts";
+import { HighTrackingNotice, MinutesNotice, StatCard } from "./parts";
 import type { SavedReport } from "./reports";
 import ScoutingReport from "./ScoutingReport";
 
@@ -28,7 +28,22 @@ const TREND_STATS: [string, string][] = [
   ["High-intensity runs", "High-intensity Runs"], ["Loose ball recoveries", "Ball Recoveries"], ["Minutes tracked", "Minutes"],
 ];
 
-const RADAR_STATS = ["Passes", "Tackles", "Duels", "Interceptions", "Dribbles", "Sprints", "Shots", "Loose ball recoveries"];
+// Per 60 wherever that means something. Pass % and top speed are the same however long someone plays.
+const RADAR_AXES: { label: string; unit: string; read: (player: PlayerModel) => number }[] = [
+  { label: "Goals", unit: "/60", read: (player) => player.per60.Goals ?? 0 },
+  { label: "Passes", unit: "/60", read: (player) => player.per60.Passes ?? 0 },
+  { label: "Pass %", unit: "%", read: passAccuracy },
+  { label: "Shots", unit: "/60", read: (player) => player.per60.Shots ?? 0 },
+  { label: "Sprints", unit: "/60", read: (player) => player.per60.Sprints ?? 0 },
+  { label: "Interceptions", unit: "/60", read: (player) => player.per60.Interceptions ?? 0 },
+  { label: "Dribbles", unit: "/60", read: (player) => player.per60.Dribbles ?? 0 },
+  { label: "Duels + Tackles", unit: "/60", read: (player) => (player.per60.Duels ?? 0) + (player.per60.Tackles ?? 0) },
+  { label: "Top speed", unit: " kph", read: (player) => (player.totals["Top speed"] ?? 0) * KM_PER_MILE },
+  { label: "km", unit: "/60", read: (player) => (player.per60["Distance tracked"] ?? 0) * KM_PER_MILE },
+];
+
+type Mode = "total" | "perGame" | "per60";
+const MODES: [Mode, string][] = [["total", "Season Total"], ["perGame", "Per Game"], ["per60", "Per 60 Min"]];
 
 const COLUMN_TIPS: Record<string, string> = {
   Goals: "Attempts resulting in a score",
@@ -60,7 +75,7 @@ export default function PlayersTab({
 }) {
   const { players, games } = team;
   const [pickedId, setPickedId] = useState(players[0]?.id);
-  const [mode, setMode] = useState<"total" | "per60">("total");
+  const [mode, setMode] = useState<Mode>("total");
   const [trendStat, setTrendStat] = useState("Passes");
   const player = players.find((other) => other.id === pickedId) ?? players[0];
 
@@ -96,20 +111,20 @@ export default function PlayersTab({
     if (!player) return null;
     // Otherwise a low-minutes rate would shrink everyone else's chart to almost nothing.
     const scalePlayers = comparisonPlayers(players);
-    const rows = RADAR_STATS.map((stat) => {
-      const values = scalePlayers.map((other) => other.per60[stat] ?? 0);
+    const rows = RADAR_AXES.map(({ unit, read }) => {
+      const values = scalePlayers.map(read);
       const best = Math.max(...values, 1);
       const average = values.reduce((sum, value) => sum + value, 0) / values.length;
-      const own = player.per60[stat] ?? 0;
-      return { own, average, ownScore: Math.min((own / best) * 100, 100), averageScore: (average / best) * 100 };
+      const own = read(player);
+      return { own, average, unit, ownScore: Math.min((own / best) * 100, 100), averageScore: (average / best) * 100 };
     });
     return {
       type: "radar",
       data: {
-        labels: RADAR_STATS.map((stat) => (stat === "Loose ball recoveries" ? "Recoveries" : stat)),
+        labels: RADAR_AXES.map(({ label, unit }) => (unit === "/60" ? `${label}/60` : label)),
         datasets: [
           {
-            label: `${player.name} (per 60)`,
+            label: player.name,
             data: rows.map((row) => Math.round(row.ownScore)),
             borderColor: "#1f6feb",
             backgroundColor: "rgba(31,111,235,.2)",
@@ -146,7 +161,7 @@ export default function PlayersTab({
               label: (item) => {
                 const row = rows[item.dataIndex];
                 const value = item.datasetIndex === 0 ? row.own : row.average;
-                return `${item.dataset.label}: ${value.toFixed(1)}${item.datasetIndex === 0 ? "" : " per 60"}`;
+                return `${item.dataset.label}: ${value.toFixed(1)}${row.unit}`;
               },
             },
           },
@@ -159,10 +174,16 @@ export default function PlayersTab({
     return <p className="muted">No player stats have been saved for this team yet.</p>;
   }
 
-  const source = mode === "per60" ? player.per60 : player.totals;
-  const modeLabel = mode === "per60" ? "/60min" : "total";
-  const totalPasses = player.totals.Passes ?? 0;
-  const passRate = totalPasses > 0 ? Math.round(((player.totals["Passes successful"] ?? 0) / totalPasses) * 100) : 0;
+  // Goals are a season count in Per Game too, as 0.3 of a goal per game reads oddly.
+  const statValue = (stat: string) =>
+    mode === "per60"
+      ? (player.per60[stat] ?? 0)
+      : mode === "perGame" && stat !== "Goals"
+        ? averagePerGame(player, stat)
+        : (player.totals[stat] ?? 0);
+  const statLabel = (stat: string) =>
+    mode === "per60" ? `${stat} /60min` : mode === "perGame" && stat !== "Goals" ? `${stat} /game` : `${stat} total`;
+  const highTrackingGames = games.filter((game) => game.trackingLooksHigh && player.perGame.has(game.label));
 
   return (
     <>
@@ -188,15 +209,21 @@ export default function PlayersTab({
       )}
       <div className="toggle-row" style={{ marginTop: 16 }}>
         <span className="muted">View:</span>
-        <button type="button" className={`toggle-btn ${mode === "total" ? "active" : ""}`} onClick={() => setMode("total")}>
-          Season Total
-        </button>
-        <button type="button" className={`toggle-btn ${mode === "per60" ? "active" : ""}`} onClick={() => setMode("per60")}>
-          Per 60 Min
-        </button>
+        {MODES.map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={mode === value}
+            className={`toggle-btn ${mode === value ? "active" : ""}`}
+            onClick={() => setMode(value)}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {mode === "per60" && <MinutesNotice team={team} />}
+      {highTrackingGames.length > 0 && <HighTrackingNotice games={highTrackingGames} />}
 
       <ScoutingReport key={player.id} player={player} autoReport={reports[player.id]} />
 
@@ -205,13 +232,22 @@ export default function PlayersTab({
         {SUMMARY_STATS.flatMap((stat) =>
           stat === "Passes successful"
             ? [
-                <StatCard key="rate" value={`${passRate}%`} label="Pass %" tip={TIPS["Pass %"]} />,
-                <StatCard key={stat} value={source[stat] ?? 0} label={`Successful Passes ${modeLabel}`} tip={TIPS[stat]} />,
+                <StatCard key="rate" value={`${passAccuracy(player)}%`} label="Pass %" tip={TIPS["Pass %"]} />,
+                <StatCard key={stat} value={statValue(stat)} label={statLabel("Successful Passes")} tip={TIPS[stat]} />,
               ]
-            : [<StatCard key={stat} value={source[stat] ?? 0} label={`${stat} ${modeLabel}`} tip={TIPS[stat]} />],
+            : [<StatCard key={stat} value={statValue(stat)} label={statLabel(stat)} tip={TIPS[stat]} />],
         )}
-        <StatCard value={Math.round(player.totals["Minutes tracked"] ?? 0)} label="Total Minutes" />
-        <StatCard value={((player.totals["Distance tracked"] ?? 0) * KM_PER_MILE).toFixed(1)} label="Total KM Run" />
+        {mode === "perGame" ? (
+          <>
+            <StatCard value={averagePerGame(player, "Minutes tracked")} label="Minutes /game" />
+            <StatCard value={(averagePerGame(player, "Distance tracked") * KM_PER_MILE).toFixed(1)} label="KM Run /game" />
+          </>
+        ) : (
+          <>
+            <StatCard value={Math.round(player.totals["Minutes tracked"] ?? 0)} label="Total Minutes" />
+            <StatCard value={((player.totals["Distance tracked"] ?? 0) * KM_PER_MILE).toFixed(1)} label="Total KM Run" />
+          </>
+        )}
         <StatCard value={((player.totals["Top speed"] ?? 0) * KM_PER_MILE).toFixed(1)} label="Top Speed (kph)" />
       </div>
 
@@ -225,7 +261,7 @@ export default function PlayersTab({
       </div>
       <div className="chart-row">
         <div className="chart-container"><h3>{trendStat} Over Season</h3><Chart config={trend} /></div>
-        <div className="chart-container"><h3>Player Profile</h3><Chart config={radar} /></div>
+        <div className="chart-container"><h3>Player Profile (per 60 min)</h3><Chart config={radar} /></div>
       </div>
 
       <div className="chart-container">
@@ -236,6 +272,7 @@ export default function PlayersTab({
               <tr>
                 <th>Game</th>
                 <th>Date</th>
+                <th>Opponent</th>
                 {LOG_COLUMNS.map(([column]) => (
                   <th key={column} data-tip={COLUMN_TIPS[column]}>{column}</th>
                 ))}
@@ -248,6 +285,7 @@ export default function PlayersTab({
                   <tr key={game.id}>
                     <td><strong>{game.label}</strong></td>
                     <td>{game.date}</td>
+                    <td>{game.opponent ?? "—"}</td>
                     {LOG_COLUMNS.map(([column, stat]) => {
                       if (!line) return <td key={column}>—</td>;
                       if (column === "Min" && line["Minutes tracked"] === undefined) return <td key={column}>—</td>;

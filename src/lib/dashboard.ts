@@ -38,6 +38,8 @@ export type GameModel = {
   hasTeamStats: boolean;
   /** Jerseys in this game not assigned to anyone yet, or null if that's not known. */
   unassignedJerseys: number | null;
+  /** Veo's speeds here are far above the team's other games. See flagHighTracking. */
+  trackingLooksHigh: boolean;
 };
 
 export type StatValues = Record<string, number>;
@@ -74,6 +76,8 @@ export type TeamModel = {
   analysis: string | null;
   /** Written by AI, where `analysis` is written by hand. */
   teamAnalysis: string | null;
+  /** What the coach wants that analysis to take into account. */
+  coachContext: string | null;
 };
 
 // Loose enough for wording like "Goals scored" or "Ball possession". The more
@@ -132,6 +136,18 @@ export function comparisonPlayers(players: PlayerModel[]) {
     (player) => (player.totals["Minutes tracked"] ?? 0) >= MIN_MINUTES_FOR_COMPARISON,
   );
   return regulars.length > 0 ? regulars : players;
+}
+
+/** Pass accuracy across everything a player has played. */
+export function passAccuracy(player: Pick<PlayerModel, "totals">) {
+  const passes = player.totals.Passes ?? 0;
+  return passes > 0 ? Math.round(((player.totals["Passes successful"] ?? 0) / passes) * 100) : 0;
+}
+
+/** Average per game, counting only games that recorded this stat, so a gap can't look like a zero. */
+export function averagePerGame(player: Pick<PlayerModel, "perGame">, column: string) {
+  const values = [...player.perGame.values()].flatMap((line) => (column in line ? [line[column]] : []));
+  return values.length > 0 ? round1(values.reduce((sum, value) => sum + value, 0) / values.length) : 0;
 }
 
 /** Tidies a nickname: "\"The Motor\"" or "The Motor The Motor" becomes "The Motor". */
@@ -301,6 +317,36 @@ function fillFromPlayers(games: GameModel[], players: PlayerModel[]) {
   }
 }
 
+const median = (values: number[]) => {
+  const sorted = values.toSorted((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)];
+};
+
+// Well clear of normal game-to-game variation, which runs to about 1.2 times.
+const HIGH_TRACKING_RATIO = 1.3;
+// A few minutes on the field doesn't say much about how a game was tracked.
+const MIN_MINUTES_FOR_TRACKING = 10;
+
+/**
+ * Marks games whose typical top speed is far above the team's other games. Speed,
+ * sprints and high-intensity runs all rise together in such a game, which suggests
+ * Veo's tracking ran high. They're only marked, as the numbers are what Veo reported.
+ */
+function flagHighTracking(games: GameModel[], players: PlayerModel[]) {
+  const typicalSpeed = games.map((game) => {
+    const speeds = players.flatMap((player) => {
+      const line = player.perGame.get(game.label);
+      return line?.["Top speed"] && (line["Minutes tracked"] ?? 0) >= MIN_MINUTES_FOR_TRACKING ? [line["Top speed"]] : [];
+    });
+    return speeds.length > 0 ? median(speeds) : null;
+  });
+  games.forEach((game, index) => {
+    const own = typicalSpeed[index];
+    const others = typicalSpeed.flatMap((speed, other) => (other !== index && speed !== null ? [speed] : []));
+    game.trackingLooksHigh = own !== null && others.length >= 2 && own > median(others) * HIGH_TRACKING_RATIO;
+  });
+}
+
 /**
  * Folds roster entries for one person, like "Celeste" and "celeste", into one player
  * with all their stats. The capitalized spelling wins, and report fields fill any gaps.
@@ -344,6 +390,7 @@ export function buildTeamModel(data: DashboardData, teamId: string): TeamModel {
         opponent: game.opponent ?? names?.[swapped ? 0 : 1] ?? null,
         stats: readTeamStats(game.team_stats, swapped),
         unassignedJerseys: data.coverage?.[game.id]?.unassigned ?? null,
+        trackingLooksHigh: false,
         hasTeamStats: Object.entries(game.team_stats ?? {}).some(
           ([label, card]) => label !== "Score" && (card.values?.length ?? 0) >= 2,
         ),
@@ -357,6 +404,7 @@ export function buildTeamModel(data: DashboardData, teamId: string): TeamModel {
     .sort((a, b) => a.name.localeCompare(b.name));
 
   fillFromPlayers(games, players);
+  flagHighTracking(games, players);
 
   return {
     id: teamId,
@@ -370,5 +418,6 @@ export function buildTeamModel(data: DashboardData, teamId: string): TeamModel {
     ),
     analysis: team?.analysis ?? null,
     teamAnalysis: team?.team_analysis ?? null,
+    coachContext: team?.coach_context ?? null,
   };
 }

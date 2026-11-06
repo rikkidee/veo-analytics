@@ -130,6 +130,7 @@ export type DashboardTeam = {
   logo_url?: string | null;
   analysis?: string | null;
   team_analysis?: string | null;
+  coach_context?: string | null;
 };
 export type DashboardPlayer = {
   id: string;

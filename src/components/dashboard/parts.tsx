@@ -1,5 +1,5 @@
 import { createElement, type CSSProperties, type ReactNode } from "react";
-import type { TeamModel } from "@/lib/dashboard";
+import type { GameModel, TeamModel } from "@/lib/dashboard";
 
 export function StatCard({
   value,
@@ -19,6 +19,18 @@ export function StatCard({
         {label}
       </div>
     </div>
+  );
+}
+
+/** Those numbers are what Veo reported, so they're flagged rather than changed or hidden. */
+export function HighTrackingNotice({ games }: { games: GameModel[] }) {
+  const names = games.map((game) => `${game.label} (${game.date})`).join(" and ");
+  return (
+    <p role="status" className="chart-error">
+      Veo&apos;s tracking looks unusually high for {names}. Its speeds, sprints and high-intensity runs are well above
+      this team&apos;s other games, so treat those numbers with caution. Passes, tackles and other events aren&apos;t
+      affected.
+    </p>
   );
 }
 

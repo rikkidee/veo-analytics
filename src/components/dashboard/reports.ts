@@ -39,10 +39,15 @@ export async function requestPlayerReport(
 export async function requestTeamAnalysis(
   teamId: string,
   onlyIfMissing: boolean,
-): Promise<{ analysis: string | null; error?: undefined; status?: undefined } | ({ analysis?: undefined } & Failure)> {
-  const response = await post(`/api/teams/${teamId}/analysis`, { onlyIfMissing });
+  /** Left out, the context last saved for this team is used. */
+  coachContext?: string,
+): Promise<
+  | { analysis: string | null; contextSaved: boolean; error?: undefined; status?: undefined }
+  | ({ analysis?: undefined } & Failure)
+> {
+  const response = await post(`/api/teams/${teamId}/analysis`, { onlyIfMissing, coachContext });
   if (!response.ok) return { status: response.status, error: response.error };
-  return { analysis: response.result.team_analysis };
+  return { analysis: response.result.team_analysis, contextSaved: response.result.context_saved !== "false" };
 }
 
 const hasReport = (player: PlayerModel) =>
