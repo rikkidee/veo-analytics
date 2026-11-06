@@ -56,7 +56,7 @@ export function readStat(column: string, value: CellValue) {
   if (isMinutesColumn(column)) return toMinutes(value) ?? leadingNumber(value);
   const number = leadingNumber(value);
   if (number === null) return null;
-  const metric = /^(distance|top speed)/i.test(column.trim()) && typeof value === "string" && /\bkm|\bkph\b/i.test(value);
+  const metric = /^(distance|top speed)/i.test(column.trim()) && typeof value === "string" && /\d\s*(?:km|kph|kilomet)/i.test(value);
   return metric ? number / KM_PER_MILE : number;
 }
 
