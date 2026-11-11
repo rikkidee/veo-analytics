@@ -53,7 +53,10 @@ export default function PanelDrawer({
         onKeyDown={(event) => {
           if (event.key === "Escape" && canClose) showPanel(null);
         }}
-        className={`fixed top-14 bottom-0 left-0 z-30 flex w-full max-w-[620px] flex-col border-r-2 border-[#1f6feb] bg-[#0d1117] shadow-[12px_0_40px_rgba(0,0,0,.7)] transition-[translate,visibility] duration-300 ease-out motion-reduce:transition-none ${
+        className={`fixed top-14 bottom-0 left-0 z-30 flex w-full ${
+          // Mapping shows a lot side by side, so it gets half the screen, though never less than the others.
+          panel === "map" ? "max-w-[max(620px,50vw)]" : "max-w-[620px]"
+        } flex-col border-r-2 border-[#1f6feb] bg-[#0d1117] shadow-[12px_0_40px_rgba(0,0,0,.7)] transition-[translate,visibility] duration-300 ease-out motion-reduce:transition-none ${
           open ? "translate-x-0" : "invisible -translate-x-full"
         }`}
       >

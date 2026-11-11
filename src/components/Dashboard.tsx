@@ -257,7 +257,7 @@ export default function Dashboard({ data: saved, email }: { data: DashboardData;
     };
   }, []);
 
-  const beside = panel && !opened.hidden ? "" : undefined;
+  const beside = panel && !opened.hidden ? (panel === "map" ? "wide" : "") : undefined;
 
   return (
     <>

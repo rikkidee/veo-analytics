@@ -116,4 +116,5 @@ body[data-dashboard] {
 @media (min-width: 1280px) {
   .veo-dash { transition: padding-left .3s ease-out; }
   .veo-dash[data-beside-panel] { padding-left: 620px; }
+  .veo-dash[data-beside-panel="wide"] { padding-left: max(620px, 50vw); }
 }
