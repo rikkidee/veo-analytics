@@ -6,6 +6,7 @@ import { Activity, useEffect, useLayoutEffect, useMemo, useRef, useState, useTra
 import { CHART_JS_URL, ChartReady } from "@/components/dashboard/Chart";
 import GameLogTab from "@/components/dashboard/GameLogTab";
 import ImportScreen from "@/components/dashboard/ImportScreen";
+import OnboardingGuide, { type OnboardingStage } from "@/components/dashboard/OnboardingGuide";
 import LeaderboardTab from "@/components/dashboard/LeaderboardTab";
 import PlayersTab from "@/components/dashboard/PlayersTab";
 import { useAutoReports } from "@/components/dashboard/reports";
@@ -22,6 +23,8 @@ import RosterForm from "@/components/RosterForm";
 import "@/components/dashboard/dashboard.css";
 import { buildTeamModel, type TeamModel } from "@/lib/dashboard";
 import { withPreviews, type DashboardData, type GamePreview } from "@/lib/stats";
+
+const ONBOARDING_KEY = "veo-onboarding-v1";
 
 const TABS = [
   ["team", "Team Overview"],
@@ -193,8 +196,36 @@ export default function Dashboard({ data: saved, email }: { data: DashboardData;
 
   // A brand new account has nothing to look at until it has a team.
   const opened = useOpenPanel();
-  const panel: Panel | null = opened.panel ?? (data.teams.length === 0 ? "roster" : null);
-  const canClose = data.teams.length > 0 || panel !== "roster";
+  const panel: Panel | null = opened.panel;
+
+  // A new account follows the guide until its jerseys are mapped. Only a browser that
+  // showed the welcome screen gets the last step, so people already set up never see it.
+  const stage: OnboardingStage | null = !currentTeam
+    ? 1
+    : model.games.length === 0
+      ? 2
+      : model.games.some((game) => (game.unassignedJerseys ?? 0) > 0)
+        ? 3
+        : null;
+  const [onboarding, setOnboarding] = useState(() => {
+    try {
+      return window.localStorage.getItem(ONBOARDING_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  if ((stage === 1 || stage === 2) && !onboarding) setOnboarding(true);
+  if (stage === null && onboarding) setOnboarding(false);
+  useEffect(() => {
+    try {
+      if (onboarding) window.localStorage.setItem(ONBOARDING_KEY, "1");
+      else window.localStorage.removeItem(ONBOARDING_KEY);
+    } catch {
+      // Storage blocked: the guide still shows while there's nothing to look at.
+    }
+  }, [onboarding]);
+  const showLastStep = onboarding && stage === 3 && !heldBy;
+  const guideTitle = data.games.length === 0 ? "Welcome to Veo Analytics" : `Finish setting up ${currentTeam?.name ?? "your team"}`;
 
   // Mounted on first use and then kept, so a half-edited roster or the game being
   // mapped is still there on coming back. Activity stops their effects while hidden.
@@ -266,23 +297,17 @@ export default function Dashboard({ data: saved, email }: { data: DashboardData;
           <div className="container">
             <ImportScreen run={heldBy} onStop={stopImport} />
           </div>
-        ) : model.games.length === 0 ? (
+        ) : stage === 1 || stage === 2 ? (
           <div className="container">
-            <p style={{ marginTop: 32 }}>
-              {currentTeam ? (
-                <>
-                  No games yet. <PanelLink panel="import">Import your first games</PanelLink>
-                </>
-              ) : (
-                <>
-                  Start with your team. <PanelLink panel="roster">Set up your roster</PanelLink>
-                </>
-              )}
-            </p>
+            <OnboardingGuide stage={stage} title={guideTitle} />
           </div>
         ) : (
           <>
-            <UnassignedBanner team={model} />
+            {showLastStep ? (
+              <OnboardingGuide stage={3} title="Getting started" compact onHide={() => setOnboarding(false)} />
+            ) : (
+              <UnassignedBanner team={model} />
+            )}
             <div className="nav">
               {TABS.map(([name, label]) => (
                 <button
@@ -309,7 +334,7 @@ export default function Dashboard({ data: saved, email }: { data: DashboardData;
           </>
         )}
       </div>
-      <PanelDrawer panel={panel} hidden={opened.hidden} canClose={canClose}>
+      <PanelDrawer panel={panel} hidden={opened.hidden} canClose>
         {panel === "import" &&
           (currentTeam ? (
             <ImportWizard

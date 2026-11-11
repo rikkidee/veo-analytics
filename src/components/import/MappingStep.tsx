@@ -274,6 +274,8 @@ export default function MappingStep({
       if (version === confirmed.current) onSaved(version);
       return undefined;
     }
+    // Said straight away, so a "Saved" left from a moment ago doesn't cover this change.
+    onSaveState("saving");
     const timer = setTimeout(() => persist(next), SAVE_DELAY_MS);
     return () => clearTimeout(timer);
   });

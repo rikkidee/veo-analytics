@@ -74,6 +74,35 @@ body[data-dashboard] {
   .import-track { width: 100%; height: 10px; background: #21262d; border-radius: 999px; overflow: hidden; }
   .import-fill { height: 100%; background: #1f6feb; border-radius: 999px; transition: width .3s; }
   .import-screen .chart-error { margin: 0; }
+  .onboarding { max-width: 640px; margin: 48px auto; background: #161b22; border: 1px solid #30363d; border-radius: 16px; padding: 32px; }
+  .onboarding h2 { font-size: 26px; font-weight: 700; color: #fff; }
+  .onboarding .lead { color: #8b949e; font-size: 15px; margin: 6px 0 24px; }
+  .onboarding ol { list-style: none; display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px; }
+  .onboarding li { display: flex; gap: 16px; align-items: center; padding: 16px; border: 1px solid #30363d; border-radius: 12px; background: #0d1117; }
+  .onboarding li.current { border-color: #1f6feb; background: rgba(31, 111, 235, .1); }
+  .onboarding li.upcoming { opacity: .6; }
+  .onboarding .step-icon { flex: none; width: 40px; height: 40px; border-radius: 999px; display: grid; place-items: center; background: #21262d; font-size: 19px; }
+  .onboarding li.done .step-icon { background: #238636; color: #fff; font-size: 17px; font-weight: 700; }
+  .onboarding .step-label { display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: #8b949e; }
+  .onboarding li.current .step-label { color: #58a6ff; }
+  .onboarding li.done .step-label { color: #3fb950; }
+  .onboarding .step-title { display: block; font-size: 16px; font-weight: 700; color: #e6edf3; }
+  .onboarding .step-text { display: block; font-size: 14px; color: #8b949e; margin-top: 2px; }
+  .onboarding-actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .onboarding .onboarding-cta { display: inline-block; background: #238636; color: #fff; padding: 12px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; text-decoration: none; }
+  .onboarding .onboarding-cta:hover { background: #2ea043; }
+  .onboarding-hide { background: none; border: none; color: #8b949e; font-size: 13px; cursor: pointer; text-decoration: underline; }
+  .onboarding.compact { max-width: none; margin: 0; border-radius: 0; border-width: 0 0 1px; padding: 16px 32px; display: flex; align-items: center; gap: 12px 24px; flex-wrap: wrap; }
+  .onboarding.compact h2 { font-size: 15px; }
+  .onboarding.compact .lead { margin: 2px 0 0; font-size: 13px; }
+  .onboarding.compact .onboarding-intro { flex: 0 1 220px; }
+  .onboarding.compact ol { flex-direction: row; flex-wrap: wrap; flex: 1 1 420px; margin: 0; gap: 8px; }
+  .onboarding.compact li { flex: 1 1 0; min-width: 150px; padding: 10px 12px; gap: 10px; }
+  .onboarding.compact li.current { flex-grow: 2; }
+  .onboarding.compact .step-icon { width: 30px; height: 30px; font-size: 15px; }
+  .onboarding.compact .step-title { font-size: 14px; }
+  .onboarding.compact .step-text { font-size: 12px; }
+  .onboarding.compact .onboarding-cta { padding: 10px 18px; font-size: 14px; }
   .chart-error { color: #f0883e; font-size: 13px; margin-bottom: 16px; }
   a { color: #58a6ff; text-decoration: underline; }
 }
