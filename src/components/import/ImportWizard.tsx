@@ -3,7 +3,7 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { primaryButton, secondaryButton } from "@/components/import/buttons";
 import { useImportRun } from "@/components/import/ImportRunner";
-import { discoverGames, discoverTeams, pingExtension } from "@/lib/veo-extension";
+import { CHROME_WEB_STORE_URL, discoverGames, discoverTeams, pingExtension } from "@/lib/veo-extension";
 import { reportUrl, type RosterPlayer, type VeoGame, type VeoTeam } from "@/lib/veo";
 
 type Step = 1 | 2 | 3;
@@ -144,16 +144,15 @@ function InstallStep({ onContinue }: { onContinue: () => void }) {
   return (
     <section className="flex flex-col items-start gap-4">
       <h2 className="text-lg font-semibold">Install the Chrome extension</h2>
-      <ol className="list-decimal space-y-1 pl-5 text-sm">
-        <li>
-          Open <code className="font-mono">chrome://extensions</code> in Chrome.
-        </li>
-        <li>Turn on Developer mode, in the top right corner.</li>
-        <li>Click Load unpacked.</li>
-        <li>
-          Choose the <code className="font-mono">chrome-extension</code> folder from this project.
-        </li>
-      </ol>
+      <p className="text-sm">
+        Install &ldquo;Veo Analytics Importer&rdquo; from the Chrome Web Store to connect your Veo account.
+      </p>
+      <a href={CHROME_WEB_STORE_URL} target="_blank" rel="noreferrer" className={primaryButton}>
+        Install from Chrome Web Store <span aria-hidden="true">→</span>
+      </a>
+      <p className="text-sm text-neutral-600 dark:text-neutral-400">
+        Once it&apos;s added to Chrome, refresh this page so it can connect, then check the connection.
+      </p>
 
       <div className="flex flex-wrap items-center gap-3">
         <button
@@ -173,8 +172,8 @@ function InstallStep({ onContinue }: { onContinue: () => void }) {
           )}
           {status === "missing" && (
             <span className="text-red-700 dark:text-red-400">
-              Extension not detected. Check that it&apos;s turned on, then refresh this page and
-              try again.
+              Extension not detected. Check that it&apos;s installed and turned on in Chrome, then refresh
+              this page and try again.
             </span>
           )}
         </p>

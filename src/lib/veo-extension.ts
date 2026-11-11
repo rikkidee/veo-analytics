@@ -19,6 +19,10 @@ export type TeamDiscovery =
   | Failure;
 export type GameDiscovery = { ok: true; games: VeoGame[]; pageUrl: string } | Failure;
 
+/** Where people install the extension. */
+export const CHROME_WEB_STORE_URL =
+  "https://chromewebstore.google.com/detail/veo-analytics-importer/eppgfdgbdljgncemcggbmgpfpffgkbfo";
+
 const PING_TIMEOUT_MS = 1_500;
 const DISCOVERY_TIMEOUT_MS = 90_000;
 
