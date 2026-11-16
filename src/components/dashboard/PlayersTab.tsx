@@ -83,10 +83,15 @@ export default function PlayersTab({
 }) {
   const { players, games } = team;
   const readOnly = useReadOnly();
-  const [pickedId, setPickedId] = useState(players[0]?.id);
+  // Most minutes first, so the regulars lead the list and open first.
+  const byMinutes = useMemo(
+    () => players.toSorted((a, b) => (b.totals["Minutes tracked"] ?? 0) - (a.totals["Minutes tracked"] ?? 0)),
+    [players],
+  );
+  const [pickedId, setPickedId] = useState(byMinutes[0]?.id);
   const [mode, setMode] = useState<Mode>("total");
   const [trendStat, setTrendStat] = useState("Passes");
-  const player = players.find((other) => other.id === pickedId) ?? players[0];
+  const player = players.find((other) => other.id === pickedId) ?? byMinutes[0];
 
   const trend = useMemo<ChartConfig | null>(() => {
     if (!player) return null;
@@ -211,7 +216,7 @@ export default function PlayersTab({
         )}
       </div>
       <div>
-        {players.map((other) => (
+        {byMinutes.map((other) => (
           <button
             key={other.id}
             type="button"
