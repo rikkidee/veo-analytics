@@ -60,44 +60,61 @@ const ONLY_THIS_ONE_FAILED = 502;
 // These stop the team analysis as well. A missing column doesn't, as the team's is a different one.
 const AFFECTS_EVERYTHING = new Set([0, 401, 429, 503]);
 
+/** A report written this visit, with the player as they were when it was written. */
+export type AutoReport = SavedReport & { basedOn: PlayerModel };
+
 /**
- * Writes whatever's missing or outdated by a new game, one at a time, once per visit,
- * with each player's saved coach notes. Everything is saved as it goes, so leaving the
- * page loses nothing and the next visit picks up the rest.
+ * Writes whatever's missing or outdated by a new game, one at a time, with each
+ * player's saved coach notes. It runs on opening the dashboard and again after every
+ * import that brings in a game. Everything is saved as it goes, so leaving the page
+ * loses nothing and the next run picks up the rest.
+ *
+ * `regenerateAll` replaces every player's report, whether or not it's outdated.
  */
 export function useAutoReports(team: TeamModel) {
   const router = useRouter();
-  // Reports written mid-import would judge players on a game or two, and they don't
-  // regenerate by themselves, so this waits until every game is in.
+  // Reports written mid-import would judge players on a game or two, so a run waits
+  // until every game is in, and one already going stops and starts over afterwards.
   const { busy: importing } = useImportRun();
-  const [reports, setReports] = useState<Record<string, SavedReport>>({});
+  const [reports, setReports] = useState<Record<string, AutoReport>>({});
   const [teamAnalysis, setTeamAnalysis] = useState<string | null>(null);
   const [progress, setProgress] = useState(() => {
     const missing = team.players.filter(needsReport).length;
-    return team.hasMinutes && missing > 0
+    return !importing && team.hasMinutes && missing > 0
       ? { complete: team.players.length - missing, total: team.players.length }
       : null;
   });
   const [generatingTeam, setGeneratingTeam] = useState(false);
+  const [running, setRunning] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  // Effects re-run when Next hides and shows this page, and this keeps it to one run.
-  const started = useRef(false);
 
-  const start = useEffectEvent(async () => {
-    if (started.current || importing || !team.hasMinutes) return;
-    started.current = true;
+  // The games the last automatic run was for. An imported game changes them, which
+  // starts another run. It also keeps Next hiding and showing this page to one run.
+  const ranFor = useRef<string | null>(null);
+  // Bumped to stop the run in progress. Requests already sent still save.
+  const runId = useRef(0);
+  const isRunning = useRef(false);
+  const gamesKey = team.games.map((game) => game.id).join(",");
 
-    const missing = team.players.filter(needsReport);
-    const total = team.players.length;
-    let complete = total - missing.length;
+  async function runPass(targets: PlayerModel[], { force }: { force: boolean }) {
+    const id = ++runId.current;
+    isRunning.current = true;
+    setRunning(true);
+    setProblem(null);
+
+    const total = force ? targets.length : team.players.length;
+    let complete = total - targets.length;
     let failed = 0;
     let stoppedBy: number | null = null;
     let wroteSomething = false;
+    const stopped = () => runId.current !== id;
+    if (targets.length > 0) setProgress({ complete, total });
 
-    for (const player of missing) {
-      const result = await requestPlayerReport(player.id, player.coachNotes ?? "", true);
+    for (const player of targets) {
+      const result = await requestPlayerReport(player.id, player.coachNotes ?? "", !force);
+      if (stopped()) return;
       if (result.report) {
-        const { report } = result;
+        const report = { ...result.report, basedOn: player };
         setReports((current) => ({ ...current, [player.id]: report }));
         complete += 1;
         wroteSomething = true;
@@ -112,9 +129,11 @@ export function useAutoReports(team: TeamModel) {
     }
     setProgress(null);
 
-    if (!team.teamAnalysis && (stoppedBy === null || !AFFECTS_EVERYTHING.has(stoppedBy))) {
+    // Regenerate All is for the players. The team's analysis has its own button.
+    if (!force && !team.teamAnalysis && (stoppedBy === null || !AFFECTS_EVERYTHING.has(stoppedBy))) {
       setGeneratingTeam(true);
       const result = await requestTeamAnalysis(team.id, true);
+      if (stopped()) return;
       setGeneratingTeam(false);
       if (result.error === undefined) {
         setTeamAnalysis(result.analysis);
@@ -125,25 +144,70 @@ export function useAutoReports(team: TeamModel) {
     }
 
     if (failed > 0) {
+      const whose = `${failed} ${failed === 1 ? "player's report" : "players' reports"}`;
       setProblem(
         (current) =>
           current ??
-          `The AI couldn't write ${failed} ${failed === 1 ? "player's report" : "players' reports"}. They'll be tried again next time this page opens.`,
+          (force
+            ? `The AI couldn't write ${whose}. Regenerate them from their profiles, or try Regenerate All again.`
+            : `The AI couldn't write ${whose}. They'll be tried again next time this page opens or a game comes in.`),
       );
     }
+    isRunning.current = false;
+    setRunning(false);
     if (wroteSomething) router.refresh();
+  }
+
+  function stop() {
+    runId.current += 1;
+    isRunning.current = false;
+    // So the run starts over once the import is done, even if it brought no new games.
+    ranFor.current = null;
+    setRunning(false);
+    setProgress(null);
+    setGeneratingTeam(false);
+  }
+
+  const onDataChange = useEffectEvent(() => {
+    if (importing) {
+      if (isRunning.current) stop();
+      return;
+    }
+    if (isRunning.current || ranFor.current === gamesKey || !team.hasMinutes) return;
+    ranFor.current = gamesKey;
+    const missing = team.players.filter(needsReport);
+    if (missing.length > 0 || !team.teamAnalysis) void runPass(missing, { force: false });
   });
 
   useEffect(() => {
-    const timer = setTimeout(() => void start());
+    const timer = setTimeout(() => onDataChange());
     return () => clearTimeout(timer);
-  }, [importing]);
+  }, [importing, gamesKey]);
+
+  function regenerateAll() {
+    if (isRunning.current || importing || !team.hasMinutes || team.players.length === 0) return;
+    const count = team.players.length;
+    // Reports may be hand-written, and there's no way to get one back once replaced.
+    const replace = window.confirm(
+      `Regenerate the analysis for all ${count} ${count === 1 ? "player" : "players"}? This replaces every current report and can't be undone.`,
+    );
+    if (replace) void runPass(team.players, { force: true });
+  }
 
   return {
     reports,
     teamAnalysis,
     generatingTeam,
     problem,
+    /** A run is writing reports, so per-player regenerating waits for it. */
+    running,
+    regenerateAll,
+    /** Why Regenerate All can't run right now, if it can't. */
+    regenerateAllBlocked: !team.hasMinutes
+      ? "Reports use per 60 stats, and this team's games have no minutes saved."
+      : importing
+        ? "Available once the import finishes."
+        : null,
     status: progress
       ? `Generating analysis... ${progress.complete}/${progress.total} players complete`
       : generatingTeam

@@ -141,6 +141,8 @@ export type DashboardTeam = {
   analysis?: string | null;
   team_analysis?: string | null;
   coach_context?: string | null;
+  /** The secret in the team's public link, or null when sharing is off. */
+  share_token?: string | null;
 };
 export type DashboardPlayer = {
   id: string;

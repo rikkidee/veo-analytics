@@ -11,6 +11,7 @@ import {
   useRef,
   useState,
   useTransition,
+  Suspense,
   type ReactNode,
 } from "react";
 import { PanelLink } from "@/components/panels/links";
@@ -57,7 +58,6 @@ export const useImportRun = () => use(Context);
  */
 export default function ImportRunner({ children }: { children: ReactNode }) {
   const router = useRouter();
-  const pathname = usePathname();
   const [isRefreshing, startRefresh] = useTransition();
   const [run, setRun] = useState<ImportRun | null>(null);
   const runRef = useRef<ImportRun | null>(null);
@@ -189,13 +189,26 @@ export default function ImportRunner({ children }: { children: ReactNode }) {
     () => ({ run, busy: active || isRefreshing, start, stop }),
     [run, active, isRefreshing, start, stop],
   );
-  const total = run?.games.length ?? 0;
-  const handled = (run?.saved ?? 0) + (run?.failures.length ?? 0);
 
   return (
     <Context value={value}>
       {children}
-      {run && !(run.active && run.holdDashboard && pathname === "/dashboard") && (
+      {/* The path is only known at runtime on dynamic routes, so it streams in on its own. */}
+      <Suspense fallback={null}>
+        {run && <ImportToast run={run} stop={stop} dismiss={dismiss} />}
+      </Suspense>
+    </Context>
+  );
+}
+
+function ImportToast({ run, stop, dismiss }: { run: ImportRun; stop: () => void; dismiss: () => void }) {
+  const pathname = usePathname();
+  const total = run.games.length;
+  const handled = run.saved + run.failures.length;
+
+  return (
+    <>
+      {!(run.active && run.holdDashboard && pathname === "/dashboard") && (
         <div
           role="status"
           className="fixed bottom-4 left-1/2 z-50 flex w-[min(34rem,calc(100vw-2rem))] -translate-x-1/2 xl:right-6 xl:left-auto xl:translate-x-0 flex-col gap-2 rounded-lg border border-neutral-800 bg-neutral-900 p-4 text-sm shadow-lg"
@@ -260,6 +273,6 @@ export default function ImportRunner({ children }: { children: ReactNode }) {
           )}
         </div>
       )}
-    </Context>
+    </>
   );
 }

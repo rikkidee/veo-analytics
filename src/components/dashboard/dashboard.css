@@ -18,7 +18,15 @@ body[data-dashboard] {
   .header { background: linear-gradient(135deg, #1a2332, #0d1117); padding: 24px 32px; border-bottom: 2px solid #1f6feb; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
   .header h1 { font-size: 24px; font-weight: 700; color: #fff; }
   .header img { width: 48px; height: 48px; border-radius: 8px; object-fit: contain; }
-  .header select { margin-left: auto; }
+  .header-actions { margin-left: auto; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .shared-badge { margin-left: auto; color: #8b949e; font-size: 13px; border: 1px solid #30363d; border-radius: 999px; padding: 4px 12px; }
+  .share-wrap { position: relative; }
+  .share-box { position: absolute; right: 0; top: calc(100% + 8px); z-index: 30; width: min(440px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 12px; background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 16px; box-shadow: 0 8px 24px rgba(0, 0, 0, .5); color: #c9d1d9; font-size: 14px; line-height: 1.5; }
+  .share-box code { font-size: 13px; color: #e6edf3; }
+  .share-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .share-row input { flex: 1; min-width: 0; background: #0d1117; color: #e6edf3; border: 1px solid #30363d; border-radius: 6px; padding: 8px 10px; font-size: 13px; }
+  .share-secondary { background: none; border: 1px solid #30363d; color: #c9d1d9; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 13px; }
+  .share-secondary:disabled { opacity: .6; cursor: default; }
   .nav { display: flex; gap: 12px; padding: 20px 32px; background: #161b22; border-bottom: 1px solid #30363d; flex-wrap: wrap; }
   .nav button { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; padding: 16px 36px; border-radius: 10px; cursor: pointer; font-size: 18px; font-weight: 600; transition: all .2s; }
   .nav button:hover { background: #30363d; }
@@ -62,6 +70,8 @@ body[data-dashboard] {
   .scouting .generate-row { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
   .generate-btn { background: #1f6feb; color: #fff; border: 1px solid #1f6feb; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; }
   .generate-btn:disabled { opacity: .6; cursor: default; }
+  .players-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+  .players-header .generate-btn { padding: 6px 14px; font-size: 13px; }
   .unassigned-banner { background: #2a1a0c; border-bottom: 1px solid #6e4015; padding: 12px 32px; color: #e6edf3; font-size: 14px; }
   .unassigned-banner a { font-weight: 600; white-space: nowrap; }
   .leaderboard-hint { margin-top: 24px; }

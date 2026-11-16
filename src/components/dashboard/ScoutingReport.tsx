@@ -4,18 +4,29 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { PlayerModel } from "@/lib/dashboard";
 import { RichText } from "./parts";
-import { requestPlayerReport, type SavedReport } from "./reports";
+import { useReadOnly } from "./read-only";
+import { requestPlayerReport, type AutoReport, type SavedReport } from "./reports";
 
 export default function ScoutingReport({
   player,
   autoReport,
+  teamRunning,
 }: {
   player: PlayerModel;
-  /** Set once the automatic run has written this player's report. */
-  autoReport?: SavedReport;
+  /** Set once an automatic run or Regenerate All has written this player's report. */
+  autoReport?: AutoReport;
+  /** Reports are being written for the whole team, which this player may be part of. */
+  teamRunning: boolean;
 }) {
   const router = useRouter();
+  const readOnly = useReadOnly();
   const [generated, setGenerated] = useState<SavedReport | null>(null);
+  // A team-wide run writing this player's report replaces one regenerated here earlier.
+  const [seenAutoReport, setSeenAutoReport] = useState(autoReport);
+  if (autoReport !== seenAutoReport) {
+    setSeenAutoReport(autoReport);
+    setGenerated(null);
+  }
   // The player as they were when regenerated, as the flags below are out of date until fresh data arrives.
   const [regeneratedFrom, setRegeneratedFrom] = useState<PlayerModel | null>(null);
   const [notes, setNotes] = useState(player.coachNotes ?? "");
@@ -29,7 +40,17 @@ export default function ScoutingReport({
     hasReport &&
     !generating &&
     regeneratedFrom !== player &&
-    (player.statsChangedSinceReport || (player.newGameSinceReport && !autoReport));
+    autoReport?.basedOn !== player &&
+    (player.statsChangedSinceReport || player.newGameSinceReport);
+  const busy = generating || teamRunning;
+
+  if (readOnly) {
+    return hasReport ? (
+      <div className="chart-container scouting">
+        <ReportBody player={player} report={{ nickname, report, strengths, develop }} />
+      </div>
+    ) : null;
+  }
 
   async function generate({ confirmFirst }: { confirmFirst: boolean }) {
     // Reports may be hand-written, and there's no way to get one back once replaced.
@@ -55,32 +76,12 @@ export default function ScoutingReport({
       {outOfDate && (
         <p className="report-stale">
           Stats updated since last analysis.{" "}
-          <button type="button" onClick={() => generate({ confirmFirst: false })}>
+          <button type="button" disabled={busy} onClick={() => generate({ confirmFirst: false })}>
             Regenerate
           </button>
         </p>
       )}
-      {hasReport && (
-        <>
-          <h3>
-            #{player.jersey} {player.name}
-            {nickname ? ` — "${nickname}"` : ""}
-          </h3>
-          <div className="report">
-            {report && <RichText html={report} />}
-            {strengths && (
-              <div style={{ marginTop: 12 }}>
-                <strong style={{ color: "#3fb950" }}>Strengths:</strong> <RichText html={strengths} />
-              </div>
-            )}
-            {develop && (
-              <div style={{ marginTop: 8 }}>
-                <strong style={{ color: "#f0883e" }}>Areas to Develop:</strong> <RichText html={develop} />
-              </div>
-            )}
-          </div>
-        </>
-      )}
+      {hasReport && <ReportBody player={player} report={{ nickname, report, strengths, develop }} />}
       <label className="notes" style={hasReport ? undefined : { marginTop: 0 }}>
         Coach notes (optional)
         <textarea
@@ -92,11 +93,11 @@ export default function ScoutingReport({
         />
       </label>
       <div className="generate-row">
-        <button type="button" className="generate-btn" disabled={generating} onClick={() => generate({ confirmFirst: true })}>
+        <button type="button" className="generate-btn" disabled={busy} onClick={() => generate({ confirmFirst: true })}>
           {generating ? "Generating…" : hasReport ? "Regenerate Analysis" : "Generate Analysis"}
         </button>
         <span role="status" className="muted">
-          {generating && "This can take up to a minute."}
+          {generating ? "This can take up to a minute." : teamRunning && "Available once the team's reports are done."}
         </span>
       </div>
       {error && (
@@ -105,5 +106,29 @@ export default function ScoutingReport({
         </p>
       )}
     </div>
+  );
+}
+
+function ReportBody({ player, report: { nickname, report, strengths, develop } }: { player: PlayerModel; report: SavedReport }) {
+  return (
+    <>
+      <h3>
+        #{player.jersey} {player.name}
+        {nickname ? ` — "${nickname}"` : ""}
+      </h3>
+      <div className="report">
+        {report && <RichText html={report} />}
+        {strengths && (
+          <div style={{ marginTop: 12 }}>
+            <strong style={{ color: "#3fb950" }}>Strengths:</strong> <RichText html={strengths} />
+          </div>
+        )}
+        {develop && (
+          <div style={{ marginTop: 8 }}>
+            <strong style={{ color: "#f0883e" }}>Areas to Develop:</strong> <RichText html={develop} />
+          </div>
+        )}
+      </div>
+    </>
   );
 }

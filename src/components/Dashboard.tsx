@@ -10,12 +10,15 @@ import OnboardingGuide, { type OnboardingStage } from "@/components/dashboard/On
 import LeaderboardTab from "@/components/dashboard/LeaderboardTab";
 import PlayersTab from "@/components/dashboard/PlayersTab";
 import { useAutoReports } from "@/components/dashboard/reports";
+import ShareLink from "@/components/dashboard/ShareLink";
+import { TABS, type Tab } from "@/components/dashboard/tabs";
 import TeamAnalysis from "@/components/dashboard/TeamAnalysis";
 import TeamTab from "@/components/dashboard/TeamTab";
 import type { MappingPreview } from "@/components/import/MappingStep";
 import { useImportRun } from "@/components/import/ImportRunner";
 import ImportWizard from "@/components/import/ImportWizard";
 import { PanelLink, showPanel, useOpenPanel, type Panel } from "@/components/panels/links";
+import GamesPanel from "@/components/panels/GamesPanel";
 import MapPanel from "@/components/panels/MapPanel";
 import PanelDrawer from "@/components/panels/PanelDrawer";
 import SettingsPanel from "@/components/panels/SettingsPanel";
@@ -25,15 +28,6 @@ import { buildTeamModel, type TeamModel } from "@/lib/dashboard";
 import { withPreviews, type DashboardData, type GamePreview } from "@/lib/stats";
 
 const ONBOARDING_KEY = "veo-onboarding-v1";
-
-const TABS = [
-  ["team", "Team Overview"],
-  ["players", "Player Profiles"],
-  ["leaderboard", "Leaderboards"],
-  ["gamelog", "Game Log"],
-  ["analysis", "Analysis"],
-] as const;
-type Tab = (typeof TABS)[number][0];
 
 // All tabs stay mounted and only hide, so each keeps its selections when switching.
 function TeamContent({ team, tab }: { team: TeamModel; tab: Tab }) {
@@ -52,7 +46,15 @@ function TeamContent({ team, tab }: { team: TeamModel; tab: Tab }) {
         </p>
       )}
       <div className={panel("team")}><TeamTab team={team} /></div>
-      <div className={panel("players")}><PlayersTab team={team} reports={auto.reports} /></div>
+      <div className={panel("players")}>
+        <PlayersTab
+          team={team}
+          reports={auto.reports}
+          reportsRunning={auto.running}
+          onRegenerateAll={auto.regenerateAll}
+          regenerateAllBlocked={auto.regenerateAllBlocked}
+        />
+      </div>
       <div className={panel("leaderboard")}><LeaderboardTab team={team} /></div>
       <div className={panel("gamelog")}><GameLogTab team={team} /></div>
       <div className={panel("analysis")}>
@@ -180,6 +182,12 @@ export default function Dashboard({ data: saved, email }: { data: DashboardData;
     refresh();
   }
 
+  function handleGameDeleted(gameId: string) {
+    // A mapping change shown ahead of its save would otherwise bring the game's stats back.
+    setPreviews((current) => Object.fromEntries(Object.entries(current).filter(([id]) => id !== gameId)));
+    refresh();
+  }
+
   // Stats first appear complete, so they wait for the import and then for its data.
   const { run, busy: importing, stop: stopImport } = useImportRun();
   const heldBy = run?.holdDashboard && importing && data.teams.some((team) => team.id === run.teamId) ? run : null;
@@ -274,22 +282,27 @@ export default function Dashboard({ data: saved, email }: { data: DashboardData;
             <img src={currentTeam.logo_url} alt="" />
           )}
           <h1>{currentTeam?.name ?? "Welcome to Veo Analytics"}</h1>
-          {data.teams.length > 1 && !heldBy && (
-            <select
-              aria-label="Team"
-              value={teamId}
-              onChange={(event) => setChosenTeamId(event.target.value)}
-            >
-              {data.teams.map((team) => {
-                // The count tells apart teams that share a name.
-                const count = data.games.filter((game) => game.team_id === team.id).length;
-                return (
-                  <option key={team.id} value={team.id}>
-                    {team.name} ({count} {count === 1 ? "game" : "games"})
-                  </option>
-                );
-              })}
-            </select>
+          {!heldBy && (
+            <div className="header-actions">
+              {data.teams.length > 1 && (
+                <select
+                  aria-label="Team"
+                  value={teamId}
+                  onChange={(event) => setChosenTeamId(event.target.value)}
+                >
+                  {data.teams.map((team) => {
+                    // The count tells apart teams that share a name.
+                    const count = data.games.filter((game) => game.team_id === team.id).length;
+                    return (
+                      <option key={team.id} value={team.id}>
+                        {team.name} ({count} {count === 1 ? "game" : "games"})
+                      </option>
+                    );
+                  })}
+                </select>
+              )}
+              {currentTeam && <ShareLink key={currentTeam.id} team={currentTeam} onSaved={refresh} />}
+            </div>
           )}
         </div>
 
@@ -346,6 +359,17 @@ export default function Dashboard({ data: saved, email }: { data: DashboardData;
               importedUrls={data.games.filter((game) => game.team_id === teamId).map((game) => game.veo_url)}
               onStarted={() => showPanel(null)}
               onClose={() => showPanel(null)}
+            />
+          ) : (
+            <NeedsTeam />
+          ))}
+        {panel === "games" &&
+          (currentTeam ? (
+            <GamesPanel
+              key={teamId}
+              team={model}
+              games={data.games.filter((game) => game.team_id === teamId)}
+              onDeleted={handleGameDeleted}
             />
           ) : (
             <NeedsTeam />

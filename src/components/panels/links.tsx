@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import type { ComponentProps } from "react";
 
-const PANELS = ["import", "map", "roster", "settings"] as const;
+const PANELS = ["import", "games", "map", "roster", "settings"] as const;
 export type Panel = (typeof PANELS)[number];
 
 export const panelHref = (panel: Panel | null) => (panel ? `/dashboard?panel=${panel}` : "/dashboard");

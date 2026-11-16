@@ -266,6 +266,37 @@ async function autoWriteGame(
   });
 }
 
+/**
+ * Deletes a saved game. Its player stats, jersey mappings and goal assignments go
+ * with it in the same statement, as they reference the game with ON DELETE CASCADE.
+ * Waits its turn, so it can't land in the middle of an import or mapping saving it.
+ */
+export function deleteGame(supabase: SupabaseClient, gameId: string) {
+  return inTurn(async () => {
+    // Read first, as afterwards there's no telling who played in it.
+    const [stats, corrections] = await Promise.all([
+      supabase.from("player_game_stats").select("player_id").eq("game_id", gameId),
+      supabase.from("event_corrections").select("player_id").eq("game_id", gameId),
+    ]);
+    if (stats.error) throw stats.error;
+    if (corrections.error) throw corrections.error;
+
+    const { data, error } = await supabase.from("games").delete().eq("id", gameId).select("id");
+    if (error) throw error;
+    // Row level security turns someone else's game into no match rather than an error.
+    if (data.length === 0) throw new Error("That game wasn't found. It may already have been deleted.");
+
+    const players = [
+      ...new Set([...stats.data, ...corrections.data].flatMap((row) => (row.player_id ? [row.player_id] : []))),
+    ];
+    if (players.length > 0) {
+      // Their season totals just changed, so their profiles offer a fresh report. Only
+      // drives that hint, so a failure here shouldn't fail the delete.
+      await supabase.from("players").update({ stats_changed_at: new Date().toISOString() }).in("id", players);
+    }
+  });
+}
+
 export function describeSaveError(cause: unknown) {
   const { code, message } = (cause ?? {}) as { code?: string; message?: string };
   // PGRST205: the table isn't in the API's schema. 42P01: Postgres has no such table.

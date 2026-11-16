@@ -11,6 +11,8 @@ CREATE TABLE teams (
   team_analysis TEXT,
   -- What the coach wants that analysis to take into account.
   coach_context TEXT,
+  -- The secret part of the team's public, view-only link. Empty when sharing is off.
+  share_token TEXT UNIQUE,
   created_by UUID REFERENCES auth.users(id),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -94,3 +96,5 @@ CREATE POLICY "Users can manage games on their teams" ON games FOR ALL USING (te
 CREATE POLICY "Users can manage jersey mappings" ON jersey_mappings FOR ALL USING (game_id IN (SELECT g.id FROM games g JOIN teams t ON g.team_id = t.id WHERE t.created_by = auth.uid()));
 CREATE POLICY "Users can manage player game stats" ON player_game_stats FOR ALL USING (game_id IN (SELECT g.id FROM games g JOIN teams t ON g.team_id = t.id WHERE t.created_by = auth.uid()));
 CREATE POLICY "Users can manage event corrections" ON event_corrections FOR ALL USING (game_id IN (SELECT g.id FROM games g JOIN teams t ON g.team_id = t.id WHERE t.created_by = auth.uid()));
+
+-- Public share links read through get_shared_team(), defined in add-share-links.sql. Run that file next.

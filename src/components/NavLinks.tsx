@@ -6,6 +6,7 @@ import { PanelLink, useOpenPanel, type Panel } from "@/components/panels/links";
 const ITEMS: [Panel | null, string][] = [
   [null, "Dashboard"],
   ["import", "Import Games"],
+  ["games", "Saved Games"],
   ["map", "Map Jerseys"],
   ["roster", "Roster"],
 ];

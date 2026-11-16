@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { TeamModel } from "@/lib/dashboard";
 import { RichText } from "./parts";
+import { useReadOnly } from "./read-only";
 import { requestTeamAnalysis } from "./reports";
 
 export default function TeamAnalysis({
@@ -17,6 +18,7 @@ export default function TeamAnalysis({
   autoRunning: boolean;
 }) {
   const router = useRouter();
+  const readOnly = useReadOnly();
   const [generated, setGenerated] = useState<string | null>(null);
   const [context, setContext] = useState(team.coachContext ?? "");
   const [contextNotSaved, setContextNotSaved] = useState(false);
@@ -39,6 +41,17 @@ export default function TeamAnalysis({
     } else {
       setError(result.error);
     }
+  }
+
+  if (readOnly) {
+    return analysis || team.analysis ? (
+      <div style={{ marginTop: 32 }}>
+        {analysis && <RichText html={analysis} />}
+        {team.analysis && <RichText html={team.analysis} />}
+      </div>
+    ) : (
+      <p className="muted" style={{ marginTop: 32 }}>No team analysis has been written yet.</p>
+    );
   }
 
   return (

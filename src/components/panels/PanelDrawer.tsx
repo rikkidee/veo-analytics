@@ -5,6 +5,7 @@ import { setPanelHidden, showPanel, type Panel } from "@/components/panels/links
 
 export const PANEL_TITLES: Record<Panel, string> = {
   import: "Import Games",
+  games: "Saved Games",
   map: "Map Jerseys",
   roster: "Roster",
   settings: "Settings",

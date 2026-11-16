@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import { averagePerGame, comparisonPlayers, KM_PER_MILE, passAccuracy, type PlayerModel, type TeamModel } from "@/lib/dashboard";
 import Chart, { baseOptions, easyHover, type ChartConfig } from "./Chart";
 import { HighTrackingNotice, MinutesNotice, StatCard } from "./parts";
-import type { SavedReport } from "./reports";
+import { useReadOnly } from "./read-only";
+import type { AutoReport } from "./reports";
 import ScoutingReport from "./ScoutingReport";
 
 const SUMMARY_STATS = ["Goals", "Shots", "Passes successful", "Tackles", "Duels", "Interceptions", "Dribbles", "Loose ball recoveries", "High-intensity runs"];
@@ -69,11 +70,19 @@ const LOG_COLUMNS: [string, string | null][] = [
 export default function PlayersTab({
   team,
   reports,
+  reportsRunning,
+  onRegenerateAll,
+  regenerateAllBlocked,
 }: {
   team: TeamModel;
-  reports: Record<string, SavedReport>;
+  reports: Record<string, AutoReport>;
+  /** Reports are being written for the team, automatically or by Regenerate All. */
+  reportsRunning: boolean;
+  onRegenerateAll: () => void;
+  regenerateAllBlocked: string | null;
 }) {
   const { players, games } = team;
+  const readOnly = useReadOnly();
   const [pickedId, setPickedId] = useState(players[0]?.id);
   const [mode, setMode] = useState<Mode>("total");
   const [trendStat, setTrendStat] = useState("Passes");
@@ -187,7 +196,20 @@ export default function PlayersTab({
 
   return (
     <>
-      <div className="section-title">Select Player</div>
+      <div className="section-title players-header">
+        <span>Select Player</span>
+        {!readOnly && (
+          <button
+            type="button"
+            className="generate-btn"
+            disabled={reportsRunning || regenerateAllBlocked !== null}
+            title={regenerateAllBlocked ?? "Write a fresh AI analysis for every player on the team"}
+            onClick={onRegenerateAll}
+          >
+            {reportsRunning ? "Generating…" : "Regenerate All"}
+          </button>
+        )}
+      </div>
       <div>
         {players.map((other) => (
           <button
@@ -208,7 +230,7 @@ export default function PlayersTab({
         </p>
       )}
       <div style={{ marginTop: 16 }}>
-        <ScoutingReport key={player.id} player={player} autoReport={reports[player.id]} />
+        <ScoutingReport key={player.id} player={player} autoReport={reports[player.id]} teamRunning={reportsRunning} />
       </div>
 
       <div className="toggle-row" style={{ marginTop: 16 }}>

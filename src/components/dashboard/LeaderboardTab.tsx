@@ -5,6 +5,7 @@ import { KM_PER_MILE, type TeamModel } from "@/lib/dashboard";
 import { PanelLink } from "@/components/panels/links";
 import Chart, { easyHover, SERIES_COLORS, type ChartConfig } from "./Chart";
 import { MinutesNotice } from "./parts";
+import { useReadOnly } from "./read-only";
 
 const STATS: [string, string][] = [
   ["Goals", "Goals"], ["Passes successful", "Successful Passes"], ["Pass %", "Pass %"], ["Tackles", "Tackles"],
@@ -27,6 +28,7 @@ const COLUMNS: [SortColumn, string][] = [
 ];
 
 export default function LeaderboardTab({ team }: { team: TeamModel }) {
+  const readOnly = useReadOnly();
   const [stat, setStat] = useState("Goals");
   const [mode, setMode] = useState<"total" | "per60">("total");
   const [sort, setSort] = useState<{ column: SortColumn; ascending: boolean } | null>(null);
@@ -111,7 +113,7 @@ export default function LeaderboardTab({ team }: { team: TeamModel }) {
 
   return (
     <>
-      {team.games.some((game) => (game.unassignedJerseys ?? 0) > 0) && (
+      {!readOnly && team.games.some((game) => (game.unassignedJerseys ?? 0) > 0) && (
         <p className="muted leaderboard-hint">
           Stats look off? Unmatched jerseys can cause missing or inflated numbers.{" "}
           <PanelLink panel="map">Fix it in Map Jerseys →</PanelLink>
